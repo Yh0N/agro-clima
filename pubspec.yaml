@@ -1,0 +1,62 @@
+name: agro_clima
+description: App móvil de predicción climática para agricultores andinos de Nariño
+publish_to: "none"
+version: 1.0.0+1
+
+environment:
+  sdk: ">=3.0.0 <4.0.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # Estado (BLoC)
+  flutter_bloc: ^8.1.6
+  equatable: ^2.0.5
+
+  # Inyección de dependencias
+  get_it: ^7.7.0
+
+  # HTTP + API
+  http: ^1.2.1
+
+  # Base de datos local
+  sqflite: ^2.3.3
+  path: ^1.9.0
+
+  # Preferencias del usuario
+  shared_preferences: ^2.3.2
+  path_provider: ^2.1.3
+
+  # Conectividad (modo offline)
+  connectivity_plus: ^6.0.3
+
+  # Gráficas historial
+  fl_chart: ^0.68.0
+
+  # Navegación
+  go_router: ^14.2.7
+
+  # Notificaciones locales (HU-17)
+  flutter_local_notifications: ^17.2.3
+  timezone: ^0.9.4
+
+  # Manejo funcional de errores
+  dartz: ^0.10.1
+
+  # Fechas en español
+  intl: ^0.19.0
+
+  cupertino_icons: ^1.0.8
+  google_fonts: ^6.2.1
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  bloc_test: ^9.1.7
+  mocktail: ^1.0.4
+  flutter_lints: ^5.0.0
+  sqflite_common_ffi: ^2.3.3
+
+flutter:
+  uses-material-design: true

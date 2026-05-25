@@ -161,6 +161,20 @@ class UsuarioRepositoryImpl implements IUsuarioRepository {
       final metaApellidos = metadata['apellidos'] as String? ?? 'AgroClima';
       final metaTelefono = metadata['telefono'] as String? ?? '';
 
+      // Si el perfil no existe en public.usuarios, crearlo para evitar errores de Foreign Key (fincas_usuario_id_fkey)
+      if (profileData == null) {
+        try {
+          await client.from('usuarios').insert({
+            'id': user.id,
+            'nombres': metaNombres,
+            'apellidos': metaApellidos,
+            'telefono': metaTelefono,
+          });
+        } catch (e) {
+          print('DEBUG: No se pudo crear el registro faltante en public.usuarios: $e');
+        }
+      }
+
       // 3. Guardar en la base de datos local SQLite (con fallback si el perfil en la nube se corrompió)
       final usuarioLocal = Usuario(
         id: 1,

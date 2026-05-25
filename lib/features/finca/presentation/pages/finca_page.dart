@@ -523,6 +523,15 @@ class _FincaPageState extends State<FincaPage> {
               _applyFinca(state.finca);
             }
           }
+          if (state is FincaError) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('Error: ${state.message} ❌'),
+                backgroundColor: AppColors.riskHigh,
+                duration: const Duration(seconds: 4),
+              ),
+            );
+          }
         },
         child: SingleChildScrollView(
           child: Column(

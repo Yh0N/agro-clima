@@ -28,45 +28,36 @@ class FincaRepositoryImpl implements IFincaRepository {
                 .select()
                 .eq('usuario_id', user.id);
 
-            if (remoteData.isNotEmpty) {
-              for (var remoteFincaMap in remoteData) {
-                final remoteId = remoteFincaMap['id'];
+            if (remoteData != null && (remoteData as List).isNotEmpty) {
+              Finca? firstSaved;
+              for (final remoteFincaMap in remoteData as List) {
+                // Restaurar cada finca localmente
                 final restoredFinca = Finca(
                   id: null, // Dejar que SQLite asigne un nuevo ID local
                   nombreAgricultero: '',
-                  nombreFinca: remoteFincaMap['nombre_finca'] as String? ?? '',
+                  nombreFinca: remoteFincaMap['nombre_finca'] as String? ?? 'Finca Restaurada',
                   municipio: remoteFincaMap['municipio'] as String? ?? 'Pasto',
                   vereda: remoteFincaMap['vereda'] as String? ?? '',
-                  altitud: remoteFincaMap['altitud'] as int? ?? 2527,
+                  altitud: (remoteFincaMap['altitud'] as num?)?.toInt() ?? 2527,
                   hectareas: (remoteFincaMap['hectareas'] as num?)?.toDouble() ?? 1.0,
                   tipoRiego: remoteFincaMap['tipo_riego'] as String? ?? 'Lluvia',
                 );
-
-                // Guardar en la base de datos local SQLite
                 final saved = await dataSource.saveFinca(restoredFinca);
-                // Guardar mapeo de supabase_id para sincronización futura
+                
                 final database = await dataSource.db.database;
-                try {
-                  await database.update(
-                    AppDatabase.tableF,
-                    {
-                      AppDatabase.colSincronizado: 1,
-                      'supabase_id': remoteId.toString(),
-                    },
-                    where: '${AppDatabase.colId} = ?',
-                    whereArgs: [saved.id],
-                  );
-                } catch (_) {
-                  // La columna supabase_id puede no existir aún, OK
-                  await database.update(
-                    AppDatabase.tableF,
-                    {AppDatabase.colSincronizado: 1},
-                    where: '${AppDatabase.colId} = ?',
-                    whereArgs: [saved.id],
-                  );
-                }
-
-                finca = saved;
+                await database.update(
+                  AppDatabase.tableF,
+                  {AppDatabase.colSincronizado: 1},
+                  where: '${AppDatabase.colId} = ?',
+                  whereArgs: [saved.id],
+                );
+                
+                firstSaved ??= saved;
+              }
+              
+              if (firstSaved != null) {
+                await dataSource.setSelectedFincaId(firstSaved.id!);
+                return Right(firstSaved);
               }
             }
           } catch (e) {
@@ -130,6 +121,9 @@ class FincaRepositoryImpl implements IFincaRepository {
             where: '${AppDatabase.colId} = ?',
             whereArgs: [saved.id],
           );
+        } on sb.PostgrestException catch (e) {
+          print('DEBUG: Error de Supabase al sincronizar finca: ${e.message}');
+          return Left(ServerFailure('Error en la base de datos en la nube: ${e.message}'));
         } catch (e) {
           print('DEBUG: Error al sincronizar finca con Supabase (trabajando offline): $e');
         }

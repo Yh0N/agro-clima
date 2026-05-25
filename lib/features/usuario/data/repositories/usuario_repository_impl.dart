@@ -64,6 +64,11 @@ class UsuarioRepositoryImpl implements IUsuarioRepository {
   Future<Either<Failure, bool>> deleteUsuario() async {
     try {
       await localDataSource.deleteUsuario();
+      try {
+        await sb.Supabase.instance.client.auth.signOut();
+      } catch (e) {
+        print('DEBUG: Error signing out from Supabase: $e');
+      }
       return const Right(true);
     } catch (e) {
       return Left(CacheFailure('Error al eliminar el usuario local'));

@@ -19,6 +19,8 @@ class SaveFincaEvent extends FincaEvent {
 
 class DeleteFincaEvent extends FincaEvent {}
 
+class ClearFincaLocalEvent extends FincaEvent {}
+
 // ── STATES ──────────────────────────────────────────────────────────────────
 
 abstract class FincaState extends Equatable {

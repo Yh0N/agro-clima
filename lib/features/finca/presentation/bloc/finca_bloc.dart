@@ -17,6 +17,7 @@ class FincaBloc extends Bloc<FincaEvent, FincaState> {
     on<LoadFincaEvent>(_onLoad);
     on<SaveFincaEvent>(_onSave);
     on<DeleteFincaEvent>(_onDelete);
+    on<ClearFincaLocalEvent>(_onClearLocal);
   }
 
   Future<void> _onLoad(LoadFincaEvent event, Emitter<FincaState> emit) async {
@@ -53,5 +54,9 @@ class FincaBloc extends Bloc<FincaEvent, FincaState> {
       (failure) => emit(FincaError(failure.message)),
       (_) => emit(FincaEmpty()),
     );
+  }
+
+  void _onClearLocal(ClearFincaLocalEvent event, Emitter<FincaState> emit) {
+    emit(FincaEmpty());
   }
 }

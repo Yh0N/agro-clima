@@ -761,9 +761,9 @@ class _SidebarContent extends StatelessWidget {
             onPressed: () async {
               Navigator.pop(ctx);
               
-              // Disparar eventos de eliminación
+              // Disparar evento de eliminación local
               context.read<UsuarioBloc>().add(DeleteUsuarioEvent());
-              context.read<FincaBloc>().add(DeleteFincaEvent());
+              context.read<FincaBloc>().add(ClearFincaLocalEvent());
               
               // Volver a la pantalla de registro
               Navigator.pushReplacementNamed(context, '/registro_usuario');

@@ -138,7 +138,7 @@ void main() {
         altitud: 1700,
         tempMin: 15.0,
         humedad: 75,
-        viento: 12.0,
+        viento: 5.0,
         mes: 4,
         nubosidad: 60,
       );

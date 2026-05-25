@@ -1,10 +1,18 @@
+import 'dart:async';
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:http/http.dart' as http;
+import 'package:shared_preferences/shared_preferences.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../../features/pronostico/domain/entities/weather_forecast.dart';
 import '../../../pronostico/presentation/bloc/weather_bloc.dart';
 import '../../../pronostico/presentation/bloc/weather_event_state.dart';
+
+import 'package:get_it/get_it.dart';
+import '../../../../core/services/municipios_service.dart';
+import '../../../../core/widgets/municipio_search_bottom_sheet.dart';
 
 class ForecastPage extends StatefulWidget {
   const ForecastPage({super.key});
@@ -15,8 +23,72 @@ class ForecastPage extends StatefulWidget {
 
 class _ForecastPageState extends State<ForecastPage> {
   String _municipio = 'Pasto';
+  final _municipiosService = GetIt.I<MunicipiosService>();
+  late final List<String> _municipios;
+  List<String> _quickAccess = ['Pasto', 'Túquerres', 'Ipiales', 'Cumbal', 'La Unión'];
 
-  static final _municipios = municipiosNarino.keys.toList();
+  @override
+  void initState() {
+    super.initState();
+    _municipios = _municipiosService.municipios.keys.toList();
+    _loadQuickAccess();
+  }
+
+  Future<void> _loadQuickAccess() async {
+    final prefs = await SharedPreferences.getInstance();
+    
+    // Cargar coordenadas guardadas de municipios personalizados
+    final customJson = prefs.getString('custom_municipios_data');
+    if (customJson != null) {
+      try {
+        final Map<String, dynamic> decoded = json.decode(customJson);
+        decoded.forEach((key, val) {
+          _municipiosService.registerMunicipio(
+            key,
+            (val['lat'] as num).toDouble(),
+            (val['lon'] as num).toDouble(),
+            (val['alt'] as num).toInt(),
+          );
+        });
+      } catch (_) {}
+    }
+
+    final saved = prefs.getStringList('quick_access_municipios');
+    if (saved != null && saved.isNotEmpty) {
+      setState(() {
+        _quickAccess = saved;
+      });
+    }
+  }
+
+  Future<void> _saveQuickAccess() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setStringList('quick_access_municipios', _quickAccess);
+  }
+
+  List<String> get _visibleMunicipios {
+    if (!_quickAccess.contains(_municipio)) {
+      return [_municipio, ..._quickAccess];
+    }
+    return _quickAccess;
+  }
+
+  void _mostrarSelectorMunicipios() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) {
+        return MunicipioSearchBottomSheet(
+          municipios: _municipios,
+          onSelected: (m) {
+            setState(() => _municipio = m);
+            context.read<WeatherBloc>().add(FetchForecastEvent(m));
+          },
+        );
+      },
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -24,19 +96,59 @@ class _ForecastPageState extends State<ForecastPage> {
       backgroundColor: AppColors.crema,
       body: Column(
         children: [
-          // TopBar
+          // TopBar (Corregido desbordamiento horizontal)
           Container(
             color: AppColors.blanco,
             padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
             child: Row(
               children: [
-                Text('🌤️ Pronóstico del Clima',
-                    style: GoogleFonts.fraunces(
-                        fontSize: 20,
-                        fontWeight: FontWeight.w700,
-                        color: AppColors.verdeOscuro)),
-                const Spacer(),
-                Text('Datos en tiempo real de Open-Meteo',
+                Expanded(
+                  child: Row(
+                    children: [
+                      Text('🌤️ Clima en ',
+                          style: GoogleFonts.fraunces(
+                              fontSize: 18,
+                              fontWeight: FontWeight.w700,
+                              color: AppColors.verdeOscuro)),
+                      Flexible(
+                        child: Text(_municipio,
+                            overflow: TextOverflow.ellipsis,
+                            style: GoogleFonts.fraunces(
+                                fontSize: 18,
+                                fontWeight: FontWeight.w900,
+                                color: AppColors.verde)),
+                      ),
+                      const SizedBox(width: 8),
+                      IconButton(
+                        constraints: const BoxConstraints(),
+                        padding: EdgeInsets.zero,
+                        icon: Icon(
+                          _quickAccess.contains(_municipio) ? Icons.star_rounded : Icons.star_outline_rounded,
+                          color: AppColors.acento,
+                          size: 24,
+                        ),
+                        onPressed: () {
+                          setState(() {
+                            if (_quickAccess.contains(_municipio)) {
+                              if (_quickAccess.length > 1) {
+                                _quickAccess.remove(_municipio);
+                              } else {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(content: Text('Debes tener al menos 1 municipio en el acceso rápido.')),
+                                );
+                              }
+                            } else {
+                              _quickAccess.add(_municipio);
+                            }
+                            _saveQuickAccess();
+                          });
+                        },
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Text('Open-Meteo',
                     style: GoogleFonts.dmSans(fontSize: 12, color: AppColors.gris)),
               ],
             ),
@@ -49,33 +161,53 @@ class _ForecastPageState extends State<ForecastPage> {
             child: SingleChildScrollView(
               scrollDirection: Axis.horizontal,
               child: Row(
-                children: _municipios.map((m) {
-                  final sel = m == _municipio;
-                  return Padding(
-                    padding: const EdgeInsets.only(right: 8),
-                    child: AnimatedContainer(
-                      duration: const Duration(milliseconds: 200),
-                      child: ElevatedButton.icon(
-                        icon: Text('📍', style: const TextStyle(fontSize: 13)),
-                        label: Text(m,
-                            style: GoogleFonts.dmSans(
-                                fontWeight: FontWeight.w600, fontSize: 13)),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: sel ? AppColors.verde : AppColors.niebla,
-                          foregroundColor: sel ? Colors.white : AppColors.verdeOscuro,
-                          elevation: 0,
-                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                          shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(8)),
+                children: [
+                  ..._visibleMunicipios.map((m) {
+                    final sel = m == _municipio;
+                    return Padding(
+                      padding: const EdgeInsets.only(right: 8),
+                      child: AnimatedContainer(
+                        duration: const Duration(milliseconds: 200),
+                        child: ElevatedButton.icon(
+                          icon: Text('📍', style: const TextStyle(fontSize: 13)),
+                          label: Text(m,
+                              style: GoogleFonts.dmSans(
+                                  fontWeight: FontWeight.w600, fontSize: 13)),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: sel ? AppColors.verde : AppColors.niebla,
+                            foregroundColor: sel ? Colors.white : AppColors.verdeOscuro,
+                            elevation: 0,
+                            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                            shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(8)),
+                          ),
+                          onPressed: () {
+                            setState(() => _municipio = m);
+                            context.read<WeatherBloc>().add(FetchForecastEvent(m));
+                          },
                         ),
-                        onPressed: () {
-                          setState(() => _municipio = m);
-                          context.read<WeatherBloc>().add(FetchForecastEvent(m));
-                        },
                       ),
+                    );
+                  }),
+                  Padding(
+                    padding: const EdgeInsets.only(right: 8),
+                    child: ElevatedButton.icon(
+                      icon: const Icon(Icons.search_rounded, size: 16),
+                      label: Text('Buscar',
+                          style: GoogleFonts.dmSans(
+                              fontWeight: FontWeight.w600, fontSize: 13)),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppColors.niebla,
+                        foregroundColor: AppColors.verdeOscuro,
+                        elevation: 0,
+                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(8)),
+                      ),
+                      onPressed: _mostrarSelectorMunicipios,
                     ),
-                  );
-                }).toList(),
+                  ),
+                ],
               ),
             ),
           ),
@@ -280,3 +412,5 @@ class _ForecastDayCard extends StatelessWidget {
     );
   }
 }
+
+

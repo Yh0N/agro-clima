@@ -3,7 +3,7 @@ import '../../../../core/errors/failures.dart';
 import '../entities/finca.dart';
 
 abstract class IFincaRepository {
-  Future<Either<Failure, List<Finca>>> loadFincas();
+  Future<Either<Failure, Finca?>> loadFinca();
   Future<Either<Failure, Finca>> saveFinca(Finca finca);
-  Future<Either<Failure, void>> deleteFinca(int id);
+  Future<Either<Failure, void>> deleteFinca();
 }

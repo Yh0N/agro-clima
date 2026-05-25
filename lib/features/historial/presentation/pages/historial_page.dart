@@ -1,6 +1,21 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:fl_chart/fl_chart.dart';
+import 'package:intl/intl.dart';
 import '../../../../core/constants/app_colors.dart';
+import '../bloc/historial_bloc.dart';
+import '../bloc/historial_event_state.dart';
+import '../../domain/entities/historial_registro.dart';
+import '../../../prediccion/domain/entities/frost_prediction.dart';
+import '../../../../core/database/app_database.dart';
+import 'package:get_it/get_it.dart';
+import '../../../../core/services/municipios_service.dart';
+import '../../../../core/widgets/municipio_search_bottom_sheet.dart';
+import '../../../finca/presentation/bloc/finca_bloc.dart';
+import '../../../finca/presentation/bloc/finca_event_state.dart';
+import '../../../finca/data/datasources/finca_sqlite_datasource.dart';
+import '../../../finca/domain/entities/finca.dart';
 
 class HistorialPage extends StatefulWidget {
   const HistorialPage({super.key});
@@ -9,365 +24,241 @@ class HistorialPage extends StatefulWidget {
   State<HistorialPage> createState() => _HistorialPageState();
 }
 
-class _HistorialPageState extends State<HistorialPage> with SingleTickerProviderStateMixin {
-  late TabController _tabs;
-
-  // Datos simulados (en producción vendrían de SQLite/API)
-  final _tempData = [7.2, 6.8, 5.9, 6.1, 4.3, 5.6, 7.1, 6.4, 5.2, 4.1,
-    3.8, 5.0, 6.3, 7.0, 6.6, 5.4, 4.9, 6.1, 7.3, 6.8,
-    5.7, 4.5, 3.9, 5.2, 6.4, 7.1, 5.8, 6.0];
-  final _mensual = [7.2, 7.8, 8.1, 8.5, 8.3, 7.1, 6.9, 7.0, 7.8, 8.2, 7.9, 7.1];
-  final _lluvia = [85, 92, 110, 145, 130, 60, 55, 58, 105, 135, 120, 80];
-
-  static const _heladas = [
-    ('2024-12-08', '-1.2°C', '> 2.800m', 'Papa, Mora', 'alto'),
-    ('2024-08-14', '1.4°C', '> 2.600m', 'Papa', 'medio'),
-    ('2024-07-22', '0.8°C', '> 2.700m', 'Papa, Arveja', 'medio'),
-    ('2024-02-03', '-0.5°C', '> 2.900m', 'Papa', 'alto'),
-    ('2023-12-15', '-2.1°C', '> 2.500m', 'Papa, Mora, Hortalizas', 'alto'),
-    ('2023-08-05', '1.9°C', '> 2.800m', 'Papa', 'bajo'),
-  ];
+class _HistorialPageState extends State<HistorialPage> {
+  String _selectedMunicipio = 'Pasto';
+  List<String> _userMunicipios = [];
 
   @override
   void initState() {
     super.initState();
-    _tabs = TabController(length: 3, vsync: this);
+    _initMunicipios();
   }
 
-  @override
-  void dispose() {
-    _tabs.dispose();
-    super.dispose();
+  Future<void> _initMunicipios() async {
+    // 1. Obtener la finca activa actualmente seleccionada desde el BLoC
+    final fincaBloc = context.read<FincaBloc>();
+    final fincaState = fincaBloc.state;
+    String initialMunicipio = 'Pasto';
+    if (fincaState is FincaLoaded) {
+      initialMunicipio = fincaState.finca.municipio;
+    } else if (fincaState is FincaSaved) {
+      initialMunicipio = fincaState.finca.municipio;
+    }
+
+    // 2. Cargar todas las fincas para sacar sus municipios únicos
+    final sqliteDataSource = GetIt.I<FincaSQLiteDataSource>();
+    final fincas = await sqliteDataSource.loadAllFincas();
+    
+    // Si no hay fincas, mostramos al menos el municipio inicial
+    final municipios = fincas.map((f) => f.municipio).toSet().toList();
+    if (municipios.isEmpty) {
+      municipios.add(initialMunicipio);
+    }
+
+    setState(() {
+      _userMunicipios = municipios;
+      if (_userMunicipios.contains(initialMunicipio)) {
+        _selectedMunicipio = initialMunicipio;
+      } else {
+        _selectedMunicipio = _userMunicipios.first;
+      }
+    });
+
+    _loadData();
+  }
+
+  void _loadData() {
+    context.read<HistorialBloc>().add(LoadHistorialEvent(_selectedMunicipio));
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.crema,
-      body: Column(
-        children: [
-          Container(
-            color: AppColors.blanco,
-            child: Column(
-              children: [
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(24, 16, 24, 0),
-                  child: Row(children: [
-                    Text('📊 Historial Climático',
-                        style: GoogleFonts.fraunces(fontSize: 20, fontWeight: FontWeight.w700, color: AppColors.verdeOscuro)),
-                    const Spacer(),
-                    Text('Datos históricos de Nariño',
-                        style: GoogleFonts.dmSans(fontSize: 12, color: AppColors.gris)),
-                  ]),
-                ),
-                TabBar(
-                  controller: _tabs,
-                  labelStyle: GoogleFonts.dmSans(fontSize: 13, fontWeight: FontWeight.w600),
-                  unselectedLabelStyle: GoogleFonts.dmSans(fontSize: 13, fontWeight: FontWeight.w400),
-                  labelColor: AppColors.verde,
-                  unselectedLabelColor: AppColors.gris,
-                  indicatorColor: AppColors.verde,
-                  indicatorSize: TabBarIndicatorSize.tab,
-                  tabs: const [
-                    Tab(text: 'Temperatura'),
-                    Tab(text: 'Heladas'),
-                    Tab(text: 'Lluvia mensual'),
-                  ],
-                ),
-              ],
-            ),
-          ),
-          Expanded(
-            child: TabBarView(
-              controller: _tabs,
-              children: [
-                _TempTab(tempData: _tempData, mensual: _mensual),
-                _HeladasTab(heladas: _heladas),
-                _LluviaTab(lluvia: _lluvia),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _TempTab extends StatelessWidget {
-  final List<double> tempData;
-  final List<double> mensual;
-  const _TempTab({required this.tempData, required this.mensual});
-
-  @override
-  Widget build(BuildContext context) {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(20),
-      child: Column(
-        children: [
-          _HistCard(
-            title: 'Temperatura mínima — Últimas 4 semanas',
-            child: _Sparkline(data: tempData, colorize: true, unit: '°C'),
-            footer: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-              Text('Hace 28 días', style: GoogleFonts.dmSans(fontSize: 11, color: AppColors.gris)),
-              Text('Hoy', style: GoogleFonts.dmSans(fontSize: 11, color: AppColors.gris)),
-            ]),
-            alert: 'Las temperaturas mínimas han bajado un promedio de 1.8°C respecto al mes anterior. '
-                'Riesgo de helada aumentado en la zona alta.',
-            alertType: _AlertType.medio,
-          ),
-          const SizedBox(height: 16),
-          _HistCard(
-            title: 'Temperatura promedio por mes — 2024',
-            child: _Sparkline(data: mensual, colorize: false, unit: '°C'),
-            footer: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-              Text('Enero', style: GoogleFonts.dmSans(fontSize: 11, color: AppColors.gris)),
-              Text('Diciembre', style: GoogleFonts.dmSans(fontSize: 11, color: AppColors.gris)),
-            ]),
-            alert: 'Fuente: IDEAM + ERA5 Copernicus. Datos calibrados para altitud de 2.500 m.s.n.m. en la zona andina de Nariño.',
-            alertType: _AlertType.info,
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _HeladasTab extends StatelessWidget {
-  final List<(String, String, String, String, String)> heladas;
-  const _HeladasTab({required this.heladas});
-
-  Color _riskColor(String level) {
-    switch (level) {
-      case 'alto': return AppColors.riskHigh;
-      case 'medio': return AppColors.riskMedium;
-      default: return AppColors.riskLow;
-    }
-  }
-  Color _riskBg(String level) {
-    switch (level) {
-      case 'alto': return const Color(0xFFFCE8E0);
-      case 'medio': return const Color(0xFFFEF3C7);
-      default: return AppColors.niebla;
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(20),
-      child: Container(
-        decoration: BoxDecoration(
-          color: AppColors.blanco,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: AppColors.niebla),
-          boxShadow: const [BoxShadow(color: Color(0x0C1A3D2B), blurRadius: 16, offset: Offset(0, 4))],
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Padding(
-              padding: const EdgeInsets.all(20),
-              child: Text('Registro de eventos de helada — Últimas 52 semanas',
-                  style: GoogleFonts.fraunces(fontSize: 15, fontWeight: FontWeight.w700, color: AppColors.verdeOscuro)),
-            ),
-            const Divider(height: 1, color: AppColors.niebla),
-            // Header
-            Container(
-              color: AppColors.niebla,
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-              child: Row(
-                children: [
-                  Expanded(flex: 3, child: Text('Fecha', style: GoogleFonts.dmSans(fontSize: 11, fontWeight: FontWeight.w700, letterSpacing: 0.5, color: AppColors.verdeOscuro))),
-                  Expanded(flex: 2, child: Text('Temp. mín', style: GoogleFonts.dmSans(fontSize: 11, fontWeight: FontWeight.w700, letterSpacing: 0.5, color: AppColors.verdeOscuro))),
-                  Expanded(flex: 3, child: Text('Altitud', style: GoogleFonts.dmSans(fontSize: 11, fontWeight: FontWeight.w700, letterSpacing: 0.5, color: AppColors.verdeOscuro))),
-                  Expanded(flex: 4, child: Text('Cultivos', style: GoogleFonts.dmSans(fontSize: 11, fontWeight: FontWeight.w700, letterSpacing: 0.5, color: AppColors.verdeOscuro))),
-                  Expanded(flex: 2, child: Text('Nivel', style: GoogleFonts.dmSans(fontSize: 11, fontWeight: FontWeight.w700, letterSpacing: 0.5, color: AppColors.verdeOscuro))),
-                ],
+      appBar: AppBar(
+        title: Text('📊 Historial Climático'),
+        actions: [
+          TextButton.icon(
+            onPressed: () {
+              showModalBottomSheet(
+                context: context,
+                isScrollControlled: true,
+                backgroundColor: Colors.transparent,
+                builder: (context) {
+                  return MunicipioSearchBottomSheet(
+                    municipios: _userMunicipios,
+                    onSelected: (m) {
+                      setState(() => _selectedMunicipio = m);
+                      _loadData();
+                    },
+                  );
+                },
+              );
+            },
+            icon: const Icon(Icons.keyboard_arrow_down_rounded, color: AppColors.verdeOscuro),
+            label: Text(
+              _selectedMunicipio,
+              style: GoogleFonts.dmSans(
+                fontSize: 16,
+                fontWeight: FontWeight.w600,
+                color: AppColors.verdeOscuro,
               ),
             ),
-            ...heladas.map((h) => Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-              decoration: const BoxDecoration(
-                border: Border(bottom: BorderSide(color: AppColors.niebla))),
-              child: Row(
-                children: [
-                  Expanded(flex: 3, child: Text(h.$1, style: GoogleFonts.dmSans(fontSize: 13))),
-                  Expanded(flex: 2, child: Text(h.$2, style: GoogleFonts.dmSans(fontSize: 13, fontWeight: FontWeight.w600))),
-                  Expanded(flex: 3, child: Text(h.$3, style: GoogleFonts.dmSans(fontSize: 13, color: AppColors.gris))),
-                  Expanded(flex: 4, child: Text(h.$4, style: GoogleFonts.dmSans(fontSize: 12, color: AppColors.gris))),
-                  Expanded(flex: 2, child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                    decoration: BoxDecoration(color: _riskBg(h.$5), borderRadius: BorderRadius.circular(20)),
-                    child: Text(h.$5.toUpperCase(),
-                        style: GoogleFonts.dmSans(fontSize: 10, fontWeight: FontWeight.w700, color: _riskColor(h.$5))),
-                  )),
-                ],
-              ),
-            )),
-          ],
-        ),
+            style: TextButton.styleFrom(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+            ),
+          ),
+          const SizedBox(width: 16),
+        ],
       ),
-    );
-  }
-}
-
-class _LluviaTab extends StatelessWidget {
-  final List<int> lluvia;
-  const _LluviaTab({required this.lluvia});
-
-  @override
-  Widget build(BuildContext context) {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(20),
-      child: _HistCard(
-        title: 'Precipitación mensual 2024 (mm)',
-        child: _LluviaChart(data: lluvia),
-        footer: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Text('Enero', style: GoogleFonts.dmSans(fontSize: 11, color: AppColors.gris)),
-            Text('Diciembre', style: GoogleFonts.dmSans(fontSize: 11, color: AppColors.gris)),
-          ],
-        ),
-        alert: 'Nariño tiene régimen bimodal. Los meses más lluviosos son marzo–mayo y septiembre–noviembre. '
-            'Planea tus fumigaciones para junio–agosto y diciembre–febrero.',
-        alertType: _AlertType.bajo,
-      ),
-    );
-  }
-}
-
-// ── SPARK CHART ──────────────────────────────────────────────────────────────
-class _Sparkline extends StatelessWidget {
-  final List<double> data;
-  final bool colorize;
-  final String unit;
-  const _Sparkline({required this.data, required this.colorize, required this.unit});
-
-  @override
-  Widget build(BuildContext context) {
-    final max = data.reduce((a, b) => a > b ? a : b);
-    final min = data.reduce((a, b) => a < b ? a : b);
-    return SizedBox(
-      height: 70,
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.end,
-        children: data.map((v) {
-          final pct = (max - min) == 0 ? 1.0 : (v - min) / (max - min);
-          Color color = AppColors.verdeClaro;
-          if (colorize) {
-            if (v < 2) color = const Color(0xFF60A5FA);
-            else if (v < 5) color = const Color(0xFF94C5F8);
+      body: BlocBuilder<HistorialBloc, HistorialState>(
+        builder: (context, state) {
+          if (state is HistorialLoading) {
+            return const Center(child: CircularProgressIndicator());
           }
-          return Expanded(
-            child: Tooltip(
-              message: '${v.toStringAsFixed(1)}$unit',
-              child: Container(
-                margin: const EdgeInsets.symmetric(horizontal: 1.5),
-                height: (pct * 55 + 10).clamp(6.0, 65.0),
-                decoration: BoxDecoration(
-                  color: color,
-                  borderRadius: const BorderRadius.only(
-                      topLeft: Radius.circular(3), topRight: Radius.circular(3)),
-                ),
+          if (state is HistorialError) {
+            return Center(child: Text(state.message));
+          }
+          if (state is HistorialLoaded) {
+            if (state.historial.isEmpty) {
+              return _buildEmpty();
+            }
+            return SingleChildScrollView(
+              padding: const EdgeInsets.all(20),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _ChartCard(registros: state.historial),
+                  const SizedBox(height: 24),
+                  _EventsTable(eventos: state.eventosHelada),
+                ],
               ),
-            ),
-          );
-        }).toList(),
+            );
+          }
+          return const SizedBox();
+        },
+      ),
+    );
+  }
+
+  Widget _buildEmpty() {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          const Text('📉', style: TextStyle(fontSize: 64)),
+          const SizedBox(height: 16),
+          Text('No hay datos históricos aún', style: GoogleFonts.fraunces(fontSize: 18, fontWeight: FontWeight.bold)),
+          const SizedBox(height: 8),
+          Text('Consulte el pronóstico para empezar a registrar.', style: GoogleFonts.dmSans(color: AppColors.gris)),
+        ],
       ),
     );
   }
 }
 
-class _LluviaChart extends StatelessWidget {
-  final List<int> data;
-  const _LluviaChart({required this.data});
+class _ChartCard extends StatelessWidget {
+  final List<HistorialRegistro> registros;
+  const _ChartCard({required this.registros});
 
   @override
   Widget build(BuildContext context) {
-    final max = data.reduce((a, b) => a > b ? a : b);
-    return SizedBox(
-      height: 90,
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.end,
-        children: data.map((v) {
-          final pct = v / max;
-          return Expanded(
-            child: Tooltip(
-              message: '${v}mm',
-              child: Container(
-                margin: const EdgeInsets.symmetric(horizontal: 2),
-                height: (pct * 75 + 8).clamp(6.0, 83.0),
-                decoration: BoxDecoration(
-                  color: AppColors.azul.withValues(alpha: 0.7),
-                  borderRadius: const BorderRadius.only(
-                      topLeft: Radius.circular(3), topRight: Radius.circular(3)),
-                ),
-              ),
-            ),
-          );
-        }).toList(),
-      ),
-    );
-  }
-}
+    // Tomamos los últimos 28 registros o lo que haya
+    final data = registros.take(28).toList().reversed.toList();
 
-// ── REUSABLE HIST CARD ────────────────────────────────────────────────────────
-enum _AlertType { alto, medio, bajo, info }
-
-class _HistCard extends StatelessWidget {
-  final String title;
-  final Widget child;
-  final Widget footer;
-  final String alert;
-  final _AlertType alertType;
-
-  const _HistCard({required this.title, required this.child, required this.footer,
-      required this.alert, required this.alertType});
-
-  @override
-  Widget build(BuildContext context) {
-    Color bg, border;
-    String emoji;
-    switch (alertType) {
-      case _AlertType.alto: bg = const Color(0xFFFCE8E0); border = AppColors.riskHigh; emoji = '🚨'; break;
-      case _AlertType.medio: bg = const Color(0xFFFEF3C7); border = AppColors.acento; emoji = '📉'; break;
-      case _AlertType.bajo: bg = AppColors.niebla; border = AppColors.verdeClaro; emoji = '🌧️'; break;
-      case _AlertType.info: bg = const Color(0xFFDBEAFE); border = AppColors.azul; emoji = '📊'; break;
-    }
     return Container(
-      padding: const EdgeInsets.all(22),
+      padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: AppColors.blanco,
-        borderRadius: BorderRadius.circular(12),
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
         border: Border.all(color: AppColors.niebla),
-        boxShadow: const [BoxShadow(color: Color(0x0C1A3D2B), blurRadius: 16, offset: Offset(0, 4))],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(title, style: GoogleFonts.fraunces(fontSize: 15, fontWeight: FontWeight.w700, color: AppColors.verdeOscuro)),
-          const SizedBox(height: 16),
-          child,
-          const SizedBox(height: 6),
-          footer,
-          const SizedBox(height: 14),
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: bg,
-              border: Border(left: BorderSide(color: border, width: 4)),
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(emoji, style: const TextStyle(fontSize: 18)),
-                const SizedBox(width: 10),
-                Expanded(child: Text(alert, style: GoogleFonts.dmSans(fontSize: 13, height: 1.5))),
-              ],
+          Text('Temperatura Mínima (°C)', style: GoogleFonts.fraunces(fontSize: 16, fontWeight: FontWeight.bold)),
+          const SizedBox(height: 4),
+          Text('Últimos 28 registros guardados', style: GoogleFonts.dmSans(fontSize: 12, color: AppColors.gris)),
+          const SizedBox(height: 24),
+          SizedBox(
+            height: 200,
+            child: LineChart(
+              LineChartData(
+                gridData: FlGridData(show: true, drawVerticalLine: false),
+                titlesData: FlTitlesData(
+                  leftTitles: AxisTitles(sideTitles: SideTitles(showTitles: true, reservedSize: 30)),
+                  bottomTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                  rightTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                  topTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                ),
+                borderData: FlBorderData(show: false),
+                lineBarsData: [
+                  LineChartBarData(
+                    spots: data.asMap().entries.map((e) => FlSpot(e.key.toDouble(), e.value.tempMin)).toList(),
+                    isCurved: true,
+                    color: AppColors.verde,
+                    barWidth: 3,
+                    isStrokeCapRound: true,
+                    dotData: FlDotData(show: data.length < 10),
+                    belowBarData: BarAreaData(
+                      show: true,
+                      color: AppColors.verde.withValues(alpha: 0.1),
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
+        ],
+      ),
+    );
+  }
+}
+
+class _EventsTable extends StatelessWidget {
+  final List<HistorialRegistro> eventos;
+  const _EventsTable({required this.eventos});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppColors.niebla),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.all(20),
+            child: Text('Alertas de Helada (Alto Riesgo)', 
+              style: GoogleFonts.fraunces(fontSize: 16, fontWeight: FontWeight.bold)),
+          ),
+          if (eventos.isEmpty)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+              child: Text('No se han registrado heladas en el último año.', 
+                style: GoogleFonts.dmSans(fontSize: 14, color: AppColors.gris)),
+            )
+          else
+            ListView.separated(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              itemCount: eventos.length,
+              separatorBuilder: (_, __) => const Divider(height: 1),
+              itemBuilder: (context, index) {
+                final e = eventos[index];
+                return ListTile(
+                  leading: const Text('❄️', style: TextStyle(fontSize: 24)),
+                  title: Text(DateFormat('dd MMMM, yyyy', 'es').format(e.fecha), 
+                    style: GoogleFonts.dmSans(fontWeight: FontWeight.bold)),
+                  subtitle: Text('Temp Mín: ${e.tempMin}°C | ${e.municipio}', 
+                    style: GoogleFonts.dmSans(fontSize: 12)),
+                  trailing: Icon(Icons.chevron_right, color: AppColors.gris),
+                );
+              },
+            ),
         ],
       ),
     );

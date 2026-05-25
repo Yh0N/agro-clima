@@ -49,6 +49,10 @@ dependencies:
 
   cupertino_icons: ^1.0.8
   google_fonts: ^6.2.1
+  supabase_flutter: ^2.6.0
+  crypto: ^3.0.3
+  geolocator: ^14.0.2
+  url_launcher: ^6.3.2
 
 dev_dependencies:
   flutter_test:
@@ -60,3 +64,5 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+  assets:
+    - assets/

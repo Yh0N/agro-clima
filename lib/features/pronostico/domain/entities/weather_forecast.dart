@@ -48,12 +48,3 @@ class MunicipioData {
   final int altitud;
   const MunicipioData({required this.lat, required this.lon, required this.altitud});
 }
-
-const Map<String, MunicipioData> municipiosNarino = {
-  'Pasto': MunicipioData(lat: 1.214, lon: -77.279, altitud: 2527),
-  'Túquerres': MunicipioData(lat: 0.823, lon: -77.642, altitud: 3070),
-  'Cumbal': MunicipioData(lat: 0.841, lon: -77.643, altitud: 3050),
-  'Ipiales': MunicipioData(lat: 0.859, lon: -77.641, altitud: 2899),
-  'La Unión': MunicipioData(lat: 1.007, lon: -77.502, altitud: 1760),
-  'Sandoná': MunicipioData(lat: 1.379, lon: -77.166, altitud: 1810),
-};

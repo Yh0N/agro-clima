@@ -1,15 +1,19 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:mocktail/mocktail.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:sqflite/sqflite.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:agro_clima/features/finca/data/datasources/finca_sqlite_datasource.dart';
 import 'package:agro_clima/features/finca/domain/entities/finca.dart';
 import 'package:agro_clima/core/database/app_database.dart';
-import 'package:shared_preferences/shared_preferences.dart';
+
+class MockAppDatabase extends Mock implements AppDatabase {}
 
 void main() {
   late FincaSQLiteDataSource dataSource;
   late Database db;
+  late MockAppDatabase mockAppDb;
 
   setUpAll(() {
     sqfliteFfiInit();
@@ -26,24 +30,28 @@ void main() {
           await db.execute('''
             CREATE TABLE ${AppDatabase.tableF} (
               ${AppDatabase.colId}        INTEGER PRIMARY KEY AUTOINCREMENT,
+              ${AppDatabase.colUsuarioId} INTEGER NOT NULL DEFAULT 1,
               ${AppDatabase.colNombreAg}  TEXT    NOT NULL,
               ${AppDatabase.colNombreF}   TEXT    NOT NULL,
               ${AppDatabase.colMunicipio} TEXT    NOT NULL,
               ${AppDatabase.colVereda}    TEXT    NOT NULL DEFAULT '',
               ${AppDatabase.colAltitud}   INTEGER NOT NULL,
               ${AppDatabase.colHectareas} REAL    NOT NULL,
-              ${AppDatabase.colTipoRiego} TEXT    NOT NULL
+              ${AppDatabase.colTipoRiego} TEXT    NOT NULL,
+              ${AppDatabase.colSincronizado} INTEGER NOT NULL DEFAULT 0,
+              ${AppDatabase.colModificadoEn} TEXT NOT NULL DEFAULT ''
             )
           ''');
         },
       ),
     );
-    dataSource = FincaSQLiteDataSource.fromDatabase(db);
+    mockAppDb = MockAppDatabase();
+    when(() => mockAppDb.database).thenAnswer((_) async => db);
+    dataSource = FincaSQLiteDataSource(db: mockAppDb);
   });
 
   tearDown(() async {
     await db.close();
-    await databaseFactoryFfi.deleteDatabase(inMemoryDatabasePath);
   });
 
   group('FincaSQLiteDataSource', () {
@@ -57,20 +65,18 @@ void main() {
       tipoRiego: 'Lluvia',
     );
 
-    test('loadFincas retorna lista vacía cuando la BD está vacía', () async {
-      final result = await dataSource.loadFincas();
-      expect(result, isEmpty);
+    test('loadFinca retorna null cuando la BD está vacía', () async {
+      final result = await dataSource.loadFinca();
+      expect(result, isNull);
     });
 
-    test('saveFinca guarda y loadFincas recupera correctamente', () async {
+    test('saveFinca guarda y loadFinca recupera correctamente', () async {
       final saved = await dataSource.saveFinca(fincaDemo);
-      expect(saved.id, isNotNull);
+      expect(saved.id, equals(1)); // Forzar ID 1 para MVP
 
-      final loadedList = await dataSource.loadFincas();
-      expect(loadedList, isNotEmpty);
-      
-      final loaded = loadedList.first;
-      expect(loaded.nombreAgricultero, 'Don José García');
+      final loaded = await dataSource.loadFinca();
+      expect(loaded, isNotNull);
+      expect(loaded!.nombreAgricultero, 'Don José García');
       expect(loaded.nombreFinca, 'La Esperanza');
       expect(loaded.municipio, 'Pasto');
       expect(loaded.altitud, 2700);
@@ -78,20 +84,11 @@ void main() {
       expect(loaded.tipoRiego, 'Lluvia');
     });
 
-    test('saveFinca hace update si tiene id', () async {
-      final saved1 = await dataSource.saveFinca(fincaDemo);
-      await dataSource.saveFinca(saved1.copyWith(altitud: 2800));
-
-      final loadedList = await dataSource.loadFincas();
-      expect(loadedList.length, 1);
-      expect(loadedList.first.altitud, 2800);
-    });
-
-    test('deleteFinca elimina el registro por id', () async {
-      final saved = await dataSource.saveFinca(fincaDemo);
-      await dataSource.deleteFinca(saved.id!);
-      final result = await dataSource.loadFincas();
-      expect(result, isEmpty);
+    test('deleteFinca elimina el registro', () async {
+      await dataSource.saveFinca(fincaDemo);
+      await dataSource.deleteFinca();
+      final result = await dataSource.loadFinca();
+      expect(result, isNull);
     });
   });
 }

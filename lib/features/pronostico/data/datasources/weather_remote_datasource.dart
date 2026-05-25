@@ -18,7 +18,7 @@ class WeatherRemoteDataSource {
       'latitude': lat.toString(),
       'longitude': lon.toString(),
       'daily':
-          'temperature_2m_min,temperature_2m_max,precipitation_probability_max,windspeed_10m_max',
+          'temperature_2m_min,temperature_2m_max,precipitation_probability_mean,windspeed_10m_max',
       'timezone': 'America/Bogota',
       'forecast_days': '7',
     });
@@ -43,7 +43,7 @@ class WeatherRemoteDataSource {
     final dates = daily['time'] as List;
     final tempMin = daily['temperature_2m_min'] as List;
     final tempMax = daily['temperature_2m_max'] as List;
-    final rain = daily['precipitation_probability_max'] as List;
+    final rain = daily['precipitation_probability_mean'] as List;
     final wind = daily['windspeed_10m_max'] as List;
 
     final List<String> dayNames = [

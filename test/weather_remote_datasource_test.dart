@@ -26,7 +26,7 @@ void main() {
         ],
         'temperature_2m_min': [4.0, 5.0, 6.0, 3.0, 4.5, 7.0, 8.0],
         'temperature_2m_max': [14.0, 15.0, 13.0, 12.0, 15.0, 16.0, 17.0],
-        'precipitation_probability_max': [30, 60, 20, 80, 10, 40, 50],
+        'precipitation_probability_mean': [30, 60, 20, 80, 10, 40, 50],
         'windspeed_10m_max': [12.0, 18.0, 10.0, 25.0, 8.0, 15.0, 20.0],
       }
     });

@@ -5,24 +5,25 @@ import '../../../../core/errors/failures.dart';
 import '../../../../core/network/network_info.dart';
 import '../datasources/weather_remote_datasource.dart';
 import '../datasources/weather_local_datasource.dart';
-import '../../../../features/pronostico/domain/entities/weather_forecast.dart'
-    show municipiosNarino;
+import '../../../../core/services/municipios_service.dart';
 
 class WeatherRepositoryImpl implements IWeatherRepository {
   final WeatherRemoteDataSource remote;
   final WeatherLocalDataSource local;
   final NetworkInfo networkInfo;
+  final MunicipiosService municipiosService;
 
   WeatherRepositoryImpl({
     required this.remote,
     required this.local,
     required this.networkInfo,
+    required this.municipiosService,
   });
 
   @override
   Future<Either<Failure, WeatherForecast>> getForecast(
       String municipio) async {
-    final mun = municipiosNarino[municipio];
+    final mun = municipiosService.getMunicipio(municipio);
     if (mun == null) {
       return Left(InputFailure('Municipio "$municipio" no encontrado.'));
     }

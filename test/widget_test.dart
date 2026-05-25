@@ -11,6 +11,7 @@ void main() {
         altitud: 3200,
         tempMin: -1,
         humedad: 50,
+        viento: 4,
         mes: 7,
         nubosidad: 50,
       );
@@ -22,22 +23,24 @@ void main() {
         altitud: 1800,
         tempMin: 15,
         humedad: 65,
+        viento: 12,
         mes: 5,
         nubosidad: 60,
       );
       expect(result.level, RiskLevel.low);
     });
 
-    test('confidence siempre entre 0.55 y 0.95', () {
+    test('confidence siempre entre 0.60 y 0.98', () {
       final result = tree.predict(
         altitud: 2500,
         tempMin: 5,
         humedad: 60,
+        viento: 10,
         mes: 3,
         nubosidad: 50,
       );
-      expect(result.confidence, greaterThanOrEqualTo(0.55));
-      expect(result.confidence, lessThanOrEqualTo(0.95));
+      expect(result.confidence, greaterThanOrEqualTo(0.60));
+      expect(result.confidence, lessThanOrEqualTo(0.98));
     });
   });
 }

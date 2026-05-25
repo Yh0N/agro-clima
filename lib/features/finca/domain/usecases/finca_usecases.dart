@@ -4,13 +4,13 @@ import '../../../../core/usecases/usecase.dart';
 import '../entities/finca.dart';
 import '../repositories/i_finca_repository.dart';
 
-class LoadFincas implements UseCase<Either<Failure, List<Finca>>, NoParams> {
+class LoadFinca implements UseCase<Either<Failure, Finca?>, NoParams> {
   final IFincaRepository repository;
-  LoadFincas(this.repository);
+  LoadFinca(this.repository);
 
   @override
-  Future<Either<Failure, List<Finca>>> call(NoParams params) async {
-    return await repository.loadFincas();
+  Future<Either<Failure, Finca?>> call(NoParams params) async {
+    return await repository.loadFinca();
   }
 }
 
@@ -24,12 +24,12 @@ class SaveFinca implements UseCase<Either<Failure, Finca>, Finca> {
   }
 }
 
-class DeleteFinca implements UseCase<Either<Failure, void>, int> {
+class DeleteFinca implements UseCase<Either<Failure, void>, NoParams> {
   final IFincaRepository repository;
   DeleteFinca(this.repository);
 
   @override
-  Future<Either<Failure, void>> call(int id) async {
-    return await repository.deleteFinca(id);
+  Future<Either<Failure, void>> call(NoParams params) async {
+    return await repository.deleteFinca();
   }
 }

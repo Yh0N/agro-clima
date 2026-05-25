@@ -3,8 +3,16 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../prediccion/presentation/bloc/prediction_bloc.dart';
+import 'dart:convert';
+import 'package:http/http.dart' as http;
+import 'package:geolocator/geolocator.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../../../prediccion/presentation/bloc/prediction_event_state.dart';
 import '../../../prediccion/domain/entities/frost_prediction.dart';
+import '../../../finca/presentation/bloc/finca_bloc.dart';
+import '../../../finca/presentation/bloc/finca_event_state.dart';
+import '../../../pronostico/presentation/bloc/weather_bloc.dart';
+import '../../../pronostico/presentation/bloc/weather_event_state.dart';
 
 class PredictionPage extends StatefulWidget {
   const PredictionPage({super.key});
@@ -20,6 +28,7 @@ class _PredictionPageState extends State<PredictionPage> {
   double _viento = 12;
   double _nubosidad = 40;
   int _mes = DateTime.now().month;
+  bool _isLoadingGps = false;
 
   static const _meses = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
     'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
@@ -33,6 +42,125 @@ class _PredictionPageState extends State<PredictionPage> {
       viento: _viento,
       nubosidad: _nubosidad,
     ));
+  }
+
+  Future<void> _syncWithCoordinates(double lat, double lon) async {
+    setState(() => _isLoadingGps = true);
+    try {
+      final url = 'https://api.open-meteo.com/v1/forecast?latitude=$lat&longitude=$lon&daily=temperature_2m_min,precipitation_probability_mean,windspeed_10m_max&timezone=America/Bogota&forecast_days=1';
+      final response = await http.get(Uri.parse(url));
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        final daily = data['daily'];
+        
+        setState(() {
+          _altitud = (data['elevation'] as num?)?.toDouble().clamp(1500.0, 3600.0) ?? _altitud;
+          _tempMin = (daily['temperature_2m_min'][0] as num).toDouble().clamp(-5.0, 20.0);
+          _viento = (daily['windspeed_10m_max'][0] as num).toDouble().clamp(0.0, 60.0);
+          final rainProb = (daily['precipitation_probability_mean'][0] as num?)?.toDouble() ?? 0.0;
+          _humedad = (rainProb > 50 ? 80.0 : 40.0).clamp(20.0, 100.0);
+          _nubosidad = (rainProb > 50 ? 80.0 : 30.0).clamp(0.0, 100.0);
+        });
+
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('✅ Datos climáticos obtenidos para Lat: $lat, Lon: $lon'),
+              backgroundColor: AppColors.verde,
+              behavior: SnackBarBehavior.floating,
+            ),
+          );
+        }
+        _predict();
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('❌ Error al obtener clima para esas coordenadas'),
+            backgroundColor: AppColors.riskHigh,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isLoadingGps = false);
+    }
+  }
+
+  Future<void> _showManualCoordinatesDialog() async {
+    final latCtrl = TextEditingController(text: '1.2136'); // Pasto default
+    final lonCtrl = TextEditingController(text: '-77.2811');
+
+    await showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: AppColors.blanco,
+        title: Text('Ingresar Coordenadas', style: GoogleFonts.fraunces(color: AppColors.verdeOscuro, fontWeight: FontWeight.bold)),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text('Escribe las coordenadas exactas para consultar el satélite:', style: GoogleFonts.dmSans(fontSize: 13, color: AppColors.gris)),
+            const SizedBox(height: 16),
+            TextField(
+              controller: latCtrl,
+              keyboardType: const TextInputType.numberWithOptions(decimal: true, signed: true),
+              decoration: const InputDecoration(labelText: 'Latitud (Ej: 1.2136)', border: OutlineInputBorder()),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: lonCtrl,
+              keyboardType: const TextInputType.numberWithOptions(decimal: true, signed: true),
+              decoration: const InputDecoration(labelText: 'Longitud (Ej: -77.2811)', border: OutlineInputBorder()),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: Text('Cancelar', style: GoogleFonts.dmSans(color: AppColors.gris))),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: AppColors.verde, foregroundColor: Colors.white),
+            onPressed: () {
+              final lat = double.tryParse(latCtrl.text);
+              final lon = double.tryParse(lonCtrl.text);
+              Navigator.pop(context);
+              if (lat != null && lon != null) {
+                _syncWithCoordinates(lat, lon);
+              } else {
+                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Coordenadas inválidas')));
+              }
+            },
+            child: const Text('Consultar'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _syncWithGPS(BuildContext context) async {
+    setState(() => _isLoadingGps = true);
+    try {
+      LocationPermission permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+        if (permission == LocationPermission.denied) throw Exception('Permiso denegado');
+      }
+
+      final position = await Geolocator.getCurrentPosition(
+        locationSettings: const LocationSettings(accuracy: LocationAccuracy.medium),
+      );
+
+      await _syncWithCoordinates(position.latitude, position.longitude);
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('❌ Error al obtener ubicación GPS. ¿Tienes el GPS encendido?'),
+            backgroundColor: AppColors.riskHigh,
+          ),
+        );
+      }
+      if (mounted) setState(() => _isLoadingGps = false);
+    }
   }
 
   @override
@@ -81,6 +209,9 @@ class _PredictionPageState extends State<PredictionPage> {
                   onVientoChanged: (v) { setState(() => _viento = v); _predict(); },
                   onNubosidadChanged: (v) { setState(() => _nubosidad = v); _predict(); },
                   onMesChanged: (v) { setState(() => _mes = v); _predict(); },
+                  onSync: () => _syncWithGPS(context),
+                  onManualSync: _showManualCoordinatesDialog,
+                  isLoadingGps: _isLoadingGps,
                 );
                 final resultPanel = const _ResultPanel();
 
@@ -113,6 +244,9 @@ class _InputPanel extends StatelessWidget {
   final ValueChanged<double> onAltitudChanged, onTempChanged, onHumedadChanged,
       onVientoChanged, onNubosidadChanged;
   final ValueChanged<int> onMesChanged;
+  final VoidCallback onSync;
+  final VoidCallback onManualSync;
+  final bool isLoadingGps;
 
   const _InputPanel({
     required this.altitud, required this.tempMin, required this.humedad,
@@ -120,6 +254,9 @@ class _InputPanel extends StatelessWidget {
     required this.meses, required this.onAltitudChanged, required this.onTempChanged,
     required this.onHumedadChanged, required this.onVientoChanged,
     required this.onNubosidadChanged, required this.onMesChanged,
+    required this.onSync,
+    required this.onManualSync,
+    required this.isLoadingGps,
   });
 
   @override
@@ -137,7 +274,63 @@ class _InputPanel extends StatelessWidget {
         children: [
           Text('🌡️ Predicción de Riesgo de Helada',
               style: GoogleFonts.fraunces(fontSize: 16, fontWeight: FontWeight.w700, color: AppColors.verdeOscuro)),
-          const SizedBox(height: 20),
+          const SizedBox(height: 12),
+          Padding(
+            padding: const EdgeInsets.only(bottom: 16),
+            child: Row(
+              children: [
+                Expanded(
+                  child: InkWell(
+                    onTap: isLoadingGps ? null : onSync,
+                    borderRadius: BorderRadius.circular(8),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                      decoration: BoxDecoration(
+                        color: AppColors.menta.withValues(alpha: 0.2),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: AppColors.verde.withValues(alpha: 0.5)),
+                      ),
+                      child: Row(
+                        children: [
+                          if (isLoadingGps)
+                            const Padding(
+                              padding: EdgeInsets.only(right: 12),
+                              child: SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.verde)),
+                            )
+                          else
+                            const Text('📡 ', style: TextStyle(fontSize: 18)),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(isLoadingGps ? 'Buscando satélites...' : 'Usar mi GPS actual', 
+                                    style: GoogleFonts.dmSans(fontSize: 13, fontWeight: FontWeight.w700, color: AppColors.verdeOscuro)),
+                                Text('Clima exacto', style: GoogleFonts.dmSans(fontSize: 11, color: AppColors.verdeOscuro.withValues(alpha: 0.8))),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                InkWell(
+                  onTap: isLoadingGps ? null : onManualSync,
+                  borderRadius: BorderRadius.circular(8),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
+                    decoration: BoxDecoration(
+                      color: AppColors.niebla,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: const Color(0xFFDDE8E0)),
+                    ),
+                    child: const Icon(Icons.edit_location_alt, color: AppColors.verdeOscuro, size: 24),
+                  ),
+                ),
+              ],
+            ),
+          ),
           _AgroSlider(label: 'Altitud de tu finca', value: altitud, unit: 'm.s.n.m.',
               min: 1500, max: 3600, divisions: 210, onChanged: onAltitudChanged),
           _AgroSlider(label: 'Temperatura mínima esta noche', value: tempMin, unit: '°C',
@@ -232,11 +425,78 @@ class _ResultPanel extends StatelessWidget {
               if (state.spray != null) _SprayCard(spray: state.spray!),
               const SizedBox(height: 16),
               _DecisionTreeCard(prediction: state.prediction),
+              const SizedBox(height: 16),
+              const _TelegramBotCard(),
             ],
           );
         }
         return const SizedBox.shrink();
       },
+    );
+  }
+}
+
+class _TelegramBotCard extends StatelessWidget {
+  const _TelegramBotCard();
+
+  Future<void> _launchTelegram() async {
+    final Uri url = Uri.parse('https://t.me/AgroClimaNarinoBot');
+    if (!await launchUrl(url, mode: LaunchMode.externalApplication)) {
+      debugPrint('No se pudo abrir $url');
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(22),
+      decoration: BoxDecoration(
+        color: const Color(0xFFE8F4FA),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFFB3D9EA)),
+        boxShadow: const [BoxShadow(color: Color(0x0C1A3D2B), blurRadius: 16, offset: Offset(0, 4))],
+      ),
+      child: Column(
+        children: [
+          Row(
+            children: [
+              const Text('🤖', style: TextStyle(fontSize: 28)),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('Asistente de Telegram',
+                        style: GoogleFonts.fraunces(fontSize: 16, fontWeight: FontWeight.w700, color: const Color(0xFF0C567A))),
+                    Text('Consultas rápidas por chat',
+                        style: GoogleFonts.dmSans(fontSize: 13, color: const Color(0xFF1E82B1))),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Text(
+            '¡Nuestro Bot entiende tu forma de hablar campesina! Puedes preguntarle directamente sobre el clima, heladas o si es buen momento para fumigar sin usar comandos difíciles.',
+            style: GoogleFonts.dmSans(fontSize: 12.5, color: const Color(0xFF236C8F), height: 1.5),
+          ),
+          const SizedBox(height: 16),
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton.icon(
+              icon: const Icon(Icons.telegram, size: 20),
+              label: Text('Abrir Chat en Telegram', style: GoogleFonts.dmSans(fontWeight: FontWeight.w700)),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF229ED9), // Telegram Blue
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+              ),
+              onPressed: _launchTelegram,
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -429,41 +689,49 @@ class _DecisionTreeCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('🌳 Árbol de decisión (simplificado)',
+          Text('🌳 Árbol de Decisión Experto',
               style: GoogleFonts.fraunces(fontSize: 16, fontWeight: FontWeight.w700, color: AppColors.verdeOscuro)),
           const SizedBox(height: 12),
           Container(
-            padding: const EdgeInsets.all(14),
+            padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              color: const Color(0xFF0F1F14),
-              borderRadius: BorderRadius.circular(8),
+              color: const Color(0xFF132A1D),
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: const Color(0xFF284835)),
             ),
             child: Text(
-              'Altitud > 2800m → SÍ\n└─ Temp.min < 4°C → SÍ\n   └─ Humedad > 80% → ALTO ❄️\n   └─ Humedad ≤ 80% → MEDIO ⚠️\n└─ Temp.min ≥ 4°C → BAJO ✅',
-              style: GoogleFonts.dmSans(
-                  fontSize: 12.5, color: const Color(0xFFC9E8D0), height: 1.9),
+              'Altitud > 2800m → SÍ\n'
+              '└─ Temp.min < 2°C → SÍ\n'
+              '   └─ Humedad < 50% y Nubosidad < 30% → SÍ\n'
+              '      └─ Viento < 3 km/h → ALTO RIESGO 🔴❄️\n'
+              '      └─ Viento > 15 km/h → RIESGO MEDIO 🟡\n'
+              '└─ Temp.min ≥ 4°C → BAJO RIESGO 🟢',
+              style: GoogleFonts.robotoMono(
+                  fontSize: 11.5, color: const Color(0xFFD1F0DB), height: 1.8),
             ),
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 14),
           Container(
-            padding: const EdgeInsets.all(12),
+            padding: const EdgeInsets.all(14),
             decoration: BoxDecoration(
-              color: const Color(0xFFDBEAFE),
-              border: const Border(left: BorderSide(color: AppColors.azul, width: 4)),
+              color: const Color(0xFFF0FDF4),
+              border: const Border(left: BorderSide(color: AppColors.verde, width: 4)),
               borderRadius: BorderRadius.circular(8),
             ),
             child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 const Text('💡 ', style: TextStyle(fontSize: 18)),
                 Expanded(
                   child: Text.rich(
                     TextSpan(
-                      style: GoogleFonts.dmSans(fontSize: 12, height: 1.6),
+                      style: GoogleFonts.dmSans(fontSize: 12, height: 1.6, color: AppColors.verdeOscuro),
                       children: const [
-                        TextSpan(text: 'Modelo entrenado con '),
+                        TextSpan(text: 'Modelo agronómico local entrenado con '),
                         TextSpan(text: '2 años de datos del IDEAM ', style: TextStyle(fontWeight: FontWeight.w700)),
-                        TextSpan(text: 'para altitudes entre 1.800–3.500 m.s.n.m. en Nariño. Precisión: '),
-                        TextSpan(text: '87%', style: TextStyle(fontWeight: FontWeight.w700)),
+                        TextSpan(text: 'para la orografía de Nariño. Considera que el '),
+                        TextSpan(text: 'viento fuerte (>15 km/h) ', style: TextStyle(fontWeight: FontWeight.w700)),
+                        TextSpan(text: 'mezcla el aire frío superficial y disminuye drásticamente la probabilidad de helada radiativa.'),
                       ],
                     ),
                   ),
@@ -472,16 +740,19 @@ class _DecisionTreeCard extends StatelessWidget {
             ),
           ),
           if (prediction.factors.isNotEmpty) ...[
-            const SizedBox(height: 12),
-            Text('Factores detectados:',
-                style: GoogleFonts.dmSans(fontSize: 13, fontWeight: FontWeight.w700)),
-            const SizedBox(height: 6),
+            const SizedBox(height: 16),
+            Text('🔍 Análisis de factores:',
+                style: GoogleFonts.dmSans(fontSize: 13, fontWeight: FontWeight.w700, color: AppColors.verdeOscuro)),
+            const SizedBox(height: 8),
             ...prediction.factors.map((f) => Padding(
-              padding: const EdgeInsets.symmetric(vertical: 2),
-              child: Row(children: [
-                const Text('• ', style: TextStyle(color: AppColors.verde)),
-                Expanded(child: Text(f, style: GoogleFonts.dmSans(fontSize: 13, color: AppColors.gris))),
-              ]),
+              padding: const EdgeInsets.symmetric(vertical: 4),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('• ', style: TextStyle(color: AppColors.verde, fontSize: 16, height: 1.2)),
+                  Expanded(child: Text(f, style: GoogleFonts.dmSans(fontSize: 13, color: AppColors.gris, height: 1.4))),
+                ],
+              ),
             )),
           ],
         ],

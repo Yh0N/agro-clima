@@ -17,26 +17,7 @@ class SaveFincaEvent extends FincaEvent {
   List<Object?> get props => [finca];
 }
 
-class UpdateFincaEvent extends FincaEvent {
-  final Finca finca;
-  UpdateFincaEvent(this.finca);
-  @override
-  List<Object?> get props => [finca];
-}
-
-class DeleteFincaEvent extends FincaEvent {
-  final int id;
-  DeleteFincaEvent(this.id);
-  @override
-  List<Object?> get props => [id];
-}
-
-class SelectActiveFincaEvent extends FincaEvent {
-  final Finca finca;
-  SelectActiveFincaEvent(this.finca);
-  @override
-  List<Object?> get props => [finca];
-}
+class DeleteFincaEvent extends FincaEvent {}
 
 // ── STATES ──────────────────────────────────────────────────────────────────
 
@@ -46,18 +27,16 @@ abstract class FincaState extends Equatable {
 }
 
 class FincaInitial extends FincaState {}
-
 class FincaLoading extends FincaState {}
 
 class FincaLoaded extends FincaState {
-  final List<Finca> fincas;
   final Finca finca;
-  
-  FincaLoaded({required this.fincas, required this.finca});
-  
+  FincaLoaded(this.finca);
   @override
-  List<Object?> get props => [fincas, finca];
+  List<Object?> get props => [finca];
 }
+
+class FincaEmpty extends FincaState {}
 
 class FincaSaved extends FincaState {
   final Finca finca;

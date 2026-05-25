@@ -1,6 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../../../core/constants/app_colors.dart';
+import '../bloc/calendario_bloc.dart';
+import '../../domain/entities/calendario_cultivo.dart';
+import '../../../cultivos/presentation/bloc/cultivos_bloc.dart';
+import '../../../cultivos/presentation/bloc/cultivos_event_state.dart';
 
 class CalendarioPage extends StatefulWidget {
   const CalendarioPage({super.key});
@@ -10,279 +15,256 @@ class CalendarioPage extends StatefulWidget {
 }
 
 class _CalendarioPageState extends State<CalendarioPage> {
-  String _cultivoSel = 'Papa';
+  String? _selectedCropId;
 
-  static const _cultivos = [
-    ('🥔', 'Papa'), ('☕', 'Café'), ('🫐', 'Mora'), ('🥬', 'Hortalizas'),
-  ];
-  static const _meses = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
-
-  static const _calData = {
-    'Papa': {
-      'desc': 'La papa se siembra principalmenten en feb–mar y jul–ago, aprovechando el inicio de las lluvias. La cosecha ocurre 90–120 días después. Altitud ideal: 2.200–3.400 m.',
-      'siembra': [1, 2, 6, 7],
-      'cosecha': [4, 5, 10, 11],
-      'fumigacion': [1, 2, 6, 7, 8],
-    },
-    'Café': {
-      'desc': 'El café de Nariño tiene cosecha principal entre octubre y enero. La siembra (trasplante) se hace en noviembre–diciembre en época seca. Altitud ideal: 1.400–2.000 m.',
-      'siembra': [10, 11, 0],
-      'cosecha': [9, 10, 11, 0, 1],
-      'fumigacion': [5, 6, 7],
-    },
-    'Mora': {
-      'desc': 'La mora produce prácticamente todo el año. La mejor calidad se da entre junio–agosto. Fumigación preventiva al inicio de lluvias. Altitud ideal: 1.800–2.800 m.',
-      'siembra': [2, 3, 8, 9],
-      'cosecha': [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11],
-      'fumigacion': [3, 4, 8, 9],
-    },
-    'Hortalizas': {
-      'desc': 'Brócoli, lechuga, zanahoria tienen ciclos cortos de 30–90 días. Se siembran varias veces al año con riego. Altitud ideal: 2.000–3.000 m.',
-      'siembra': [1, 2, 3, 7, 8, 9],
-      'cosecha': [3, 4, 5, 6, 10, 11],
-      'fumigacion': [1, 2, 3, 7, 8, 9],
-    },
-  };
+  @override
+  void initState() {
+    super.initState();
+    context.read<CalendarioBloc>().add(LoadCalendarioEvent());
+  }
 
   @override
   Widget build(BuildContext context) {
-    final mesActual = DateTime.now().month - 1; // 0-indexed
-    final data = _calData[_cultivoSel]!;
-    final siembra = List<int>.from(data['siembra'] as List);
-    final cosecha = List<int>.from(data['cosecha'] as List);
-    final fumig = List<int>.from(data['fumigacion'] as List);
-
-    // Actividades del mes actual
-    final acts = <(String, String)>[];
-    if (siembra.contains(mesActual)) acts.add(('🌱', 'Buen mes para sembrar — aprovecha el inicio de lluvias'));
-    if (cosecha.contains(mesActual)) acts.add(('🌾', 'Temporada de cosecha — revisa madurez cada 3 días'));
-    if (fumig.contains(mesActual)) acts.add(('💊', 'Mes de fumigación preventiva — aplica en días secos y sin viento'));
-    if (acts.isEmpty) acts.add(('⏳', 'Mes de mantenimiento — riega y abona según necesidad'));
+    final currentMonth = DateTime.now().month;
 
     return Scaffold(
       backgroundColor: AppColors.crema,
-      body: SingleChildScrollView(
-        child: Column(
-          children: [
-            Container(
-              color: AppColors.blanco,
-              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-              child: Row(children: [
-                Text('📅 Calendario Agrícola',
-                    style: GoogleFonts.fraunces(fontSize: 20, fontWeight: FontWeight.w700, color: AppColors.verdeOscuro)),
-                const Spacer(),
-                Text('Ventanas óptimas por cultivo',
-                    style: GoogleFonts.dmSans(fontSize: 12, color: AppColors.gris)),
-              ]),
-            ),
-            Padding(
-              padding: const EdgeInsets.all(24),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // Selector cultivoo
-                  Container(
-                    padding: const EdgeInsets.all(22),
-                    decoration: BoxDecoration(
-                      color: AppColors.blanco, borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: AppColors.niebla),
-                      boxShadow: const [BoxShadow(color: Color(0x0C1A3D2B), blurRadius: 16, offset: Offset(0, 4))],
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text('Selecciona cultivo para ver el calendario',
-                            style: GoogleFonts.fraunces(fontSize: 15, fontWeight: FontWeight.w700, color: AppColors.verdeOscuro)),
-                        const SizedBox(height: 14),
-                        Wrap(
-                          spacing: 8, runSpacing: 8,
-                          children: _cultivos.map((c) {
-                            final nombre = c.$2;
-                            final sel = nombre == _cultivoSel;
-                            return GestureDetector(
-                              onTap: () => setState(() => _cultivoSel = nombre),
-                              child: AnimatedContainer(
-                                duration: const Duration(milliseconds: 200),
-                                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                                decoration: BoxDecoration(
-                                  color: sel ? AppColors.verde : AppColors.blanco,
-                                  borderRadius: BorderRadius.circular(50),
-                                  border: Border.all(color: sel ? AppColors.verde : AppColors.niebla, width: 2),
-                                ),
-                                child: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    Text(c.$1, style: const TextStyle(fontSize: 15)),
-                                    const SizedBox(width: 6),
-                                    Text(nombre, style: GoogleFonts.dmSans(fontSize: 13, fontWeight: FontWeight.w500,
-                                        color: sel ? Colors.white : AppColors.verdeOscuro)),
-                                  ],
+      body: BlocBuilder<CalendarioBloc, CalendarioState>(
+        builder: (context, state) {
+          if (state is CalendarioLoading) {
+            return const Center(child: CircularProgressIndicator());
+          }
+          if (state is CalendarioError) {
+            return Center(child: Text(state.message));
+          }
+          if (state is CalendarioLoaded) {
+            return BlocBuilder<CultivosBloc, CultivosState>(
+              builder: (context, cultState) {
+                final activeIds = cultState is CultivosLoaded ? cultState.selectedCrops.map((c) => c.id).toList() : <String>[];
+                final filteredCalendars = state.calendarios
+                    .where((c) => activeIds.contains(c.id))
+                    .toList();
+                
+                // Si no hay ninguno seleccionado de los activos, tomamos el primero disponible
+                if (_selectedCropId == null && filteredCalendars.isNotEmpty) {
+                  _selectedCropId = filteredCalendars.first.id;
+                } else if (_selectedCropId == null && state.calendarios.isNotEmpty) {
+                  _selectedCropId = state.calendarios.first.id;
+                }
+
+                final selectedCal = state.calendarios.firstWhere(
+                  (c) => c.id == _selectedCropId,
+                  orElse: () => state.calendarios.first,
+                );
+
+                return SingleChildScrollView(
+                  padding: const EdgeInsets.all(20),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('📅 Calendario Agrícola',
+                          style: GoogleFonts.fraunces(
+                              fontSize: 24,
+                              fontWeight: FontWeight.w900,
+                              color: AppColors.verdeOscuro)),
+                      const SizedBox(height: 16),
+                      
+                      // Selector de cultivos activos
+                      SizedBox(
+                        height: 40,
+                        child: ListView(
+                          scrollDirection: Axis.horizontal,
+                          children: state.calendarios.map((c) {
+                            final isActive = activeIds.contains(c.id);
+                            final isSelected = _selectedCropId == c.id;
+                            return Padding(
+                              padding: const EdgeInsets.only(right: 8),
+                              child: ChoiceChip(
+                                label: Text(c.nombre),
+                                selected: isSelected,
+                                onSelected: (val) {
+                                  if (val) setState(() => _selectedCropId = c.id);
+                                },
+                                selectedColor: AppColors.verde,
+                                labelStyle: GoogleFonts.dmSans(
+                                  color: isSelected ? Colors.white : (isActive ? AppColors.verdeOscuro : AppColors.gris),
+                                  fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
                                 ),
                               ),
                             );
                           }).toList(),
                         ),
-                      ],
-                    ),
+                      ),
+                      
+                      const SizedBox(height: 24),
+                      _CalendarGrid(calendario: selectedCal, currentMonth: currentMonth),
+                      
+                      const SizedBox(height: 24),
+                      _CropInfoCard(calendario: selectedCal),
+                    ],
                   ),
-                  const SizedBox(height: 16),
-
-                  // Descripción del cultivo
-                  Container(
-                    padding: const EdgeInsets.all(18),
-                    decoration: BoxDecoration(
-                      color: AppColors.niebla, borderRadius: BorderRadius.circular(10),
-                      border: Border(left: BorderSide(color: AppColors.verde, width: 4)),
-                    ),
-                    child: Text(data['desc'] as String,
-                        style: GoogleFonts.dmSans(fontSize: 14, height: 1.6, color: AppColors.verdeOscuro)),
-                  ),
-                  const SizedBox(height: 16),
-
-                  // Tabla calendario
-                  Container(
-                    decoration: BoxDecoration(
-                      color: AppColors.blanco, borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: AppColors.niebla),
-                      boxShadow: const [BoxShadow(color: Color(0x0C1A3D2B), blurRadius: 16, offset: Offset(0, 4))],
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Padding(
-                          padding: const EdgeInsets.fromLTRB(20, 18, 20, 14),
-                          child: Text('Calendario anual — $_cultivoSel',
-                              style: GoogleFonts.fraunces(fontSize: 15, fontWeight: FontWeight.w700, color: AppColors.verdeOscuro)),
-                        ),
-                        const Divider(height: 1, color: AppColors.niebla),
-                        SingleChildScrollView(
-                          scrollDirection: Axis.horizontal,
-                          child: Padding(
-                            padding: const EdgeInsets.all(16),
-                            child: Column(
-                              children: [
-                                // Header meses
-                                Row(
-                                  children: [
-                                    const SizedBox(width: 100),
-                                    ..._meses.asMap().entries.map((e) => _MesHeader(
-                                      mes: e.value, isActual: e.key == mesActual)),
-                                  ],
-                                ),
-                                const SizedBox(height: 6),
-                                _CalRow(label: '🌱 Siembra', meses: siembra, color: AppColors.riskLow, bg: AppColors.niebla, mesActual: mesActual),
-                                _CalRow(label: '🌾 Cosecha', meses: cosecha, color: const Color(0xFF92400E), bg: const Color(0xFFFEF3C7), mesActual: mesActual),
-                                _CalRow(label: '💊 Fumigar', meses: fumig, color: AppColors.azul, bg: const Color(0xFFDBEAFE), mesActual: mesActual),
-                              ],
-                            ),
-                          ),
-                        ),
-                        const Divider(height: 1, color: AppColors.niebla),
-                        // Mes actual
-                        Padding(
-                          padding: const EdgeInsets.all(18),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              RichText(
-                                text: TextSpan(
-                                  style: GoogleFonts.fraunces(fontSize: 15, fontWeight: FontWeight.w700, color: AppColors.verdeOscuro),
-                                  children: [
-                                    const TextSpan(text: '📅 Este mes — '),
-                                    TextSpan(text: _meses[mesActual],
-                                        style: const TextStyle(color: AppColors.verde)),
-                                  ],
-                                ),
-                              ),
-                              const SizedBox(height: 10),
-                              ...acts.map((a) => Container(
-                                margin: const EdgeInsets.only(bottom: 8),
-                                padding: const EdgeInsets.all(12),
-                                decoration: BoxDecoration(
-                                  color: AppColors.niebla,
-                                  border: const Border(left: BorderSide(color: AppColors.verdeClaro, width: 4)),
-                                  borderRadius: BorderRadius.circular(8),
-                                ),
-                                child: Row(
-                                  children: [
-                                    Text(a.$1, style: const TextStyle(fontSize: 18)),
-                                    const SizedBox(width: 10),
-                                    Expanded(child: Text(a.$2,
-                                        style: GoogleFonts.dmSans(fontSize: 13, height: 1.5))),
-                                  ],
-                                ),
-                              )),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
+                );
+              },
+            );
+          }
+          return const SizedBox();
+        },
       ),
     );
   }
 }
 
-class _MesHeader extends StatelessWidget {
-  final String mes;
-  final bool isActual;
-  const _MesHeader({required this.mes, required this.isActual});
+class _CalendarGrid extends StatelessWidget {
+  final CalendarioCultivo calendario;
+  final int currentMonth;
+
+  const _CalendarGrid({required this.calendario, required this.currentMonth});
+
+  @override
+  Widget build(BuildContext context) {
+    final months = [
+      'Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun',
+      'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'
+    ];
+
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppColors.niebla),
+      ),
+      child: Column(
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceAround,
+            children: [
+              _LegendItem(color: Colors.green, label: 'Siembra'),
+              _LegendItem(color: Colors.orange, label: 'Cosecha'),
+              _LegendItem(color: Colors.blue, label: 'Fumigar'),
+            ],
+          ),
+          const SizedBox(height: 20),
+          GridView.builder(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: 3,
+              crossAxisSpacing: 10,
+              mainAxisSpacing: 10,
+              childAspectRatio: 1.2,
+            ),
+            itemCount: 12,
+            itemBuilder: (context, index) {
+              final monthIdx = index + 1;
+              final isCurrent = monthIdx == currentMonth;
+              final isSiembra = calendario.mesesSiembra.contains(monthIdx);
+              final isCosecha = calendario.mesesCosecha.contains(monthIdx);
+              final isFumigacion = calendario.mesesFumigacion.contains(monthIdx);
+
+              return Container(
+                decoration: BoxDecoration(
+                  color: isCurrent ? Colors.amber.withOpacity(0.1) : AppColors.crema.withOpacity(0.5),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: isCurrent ? Colors.amber : AppColors.niebla,
+                    width: isCurrent ? 2 : 1,
+                  ),
+                ),
+                child: Stack(
+                  children: [
+                    if (isCurrent)
+                      Positioned(
+                        top: 4, right: 4,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                          decoration: BoxDecoration(color: Colors.amber, borderRadius: BorderRadius.circular(4)),
+                          child: Text('Hoy', style: GoogleFonts.dmSans(fontSize: 8, fontWeight: FontWeight.bold)),
+                        ),
+                      ),
+                    Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Text(months[index], 
+                            style: GoogleFonts.dmSans(
+                              fontWeight: isCurrent ? FontWeight.bold : FontWeight.normal,
+                              color: AppColors.verdeOscuro
+                            )
+                          ),
+                          const SizedBox(height: 4),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              if (isSiembra) _Dot(color: Colors.green),
+                              if (isCosecha) _Dot(color: Colors.orange),
+                              if (isFumigacion) _Dot(color: Colors.blue),
+                            ],
+                          )
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            },
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _LegendItem extends StatelessWidget {
+  final Color color;
+  final String label;
+  const _LegendItem({required this.color, required this.label});
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Container(width: 10, height: 10, decoration: BoxDecoration(color: color, shape: BoxShape.circle)),
+        const SizedBox(width: 4),
+        Text(label, style: GoogleFonts.dmSans(fontSize: 12, color: AppColors.gris)),
+      ],
+    );
+  }
+}
+
+class _Dot extends StatelessWidget {
+  final Color color;
+  const _Dot({required this.color});
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 1),
+      width: 6, height: 6, 
+      decoration: BoxDecoration(color: color, shape: BoxShape.circle)
+    );
+  }
+}
+
+class _CropInfoCard extends StatelessWidget {
+  final CalendarioCultivo calendario;
+  const _CropInfoCard({required this.calendario});
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      width: 36,
-      margin: const EdgeInsets.symmetric(horizontal: 2),
-      padding: const EdgeInsets.symmetric(vertical: 5),
+      padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: isActual ? AppColors.verde : Colors.transparent,
-        borderRadius: BorderRadius.circular(4),
+        color: AppColors.verdeOscuro,
+        borderRadius: BorderRadius.circular(16),
       ),
-      child: Text(mes,
-          textAlign: TextAlign.center,
-          style: GoogleFonts.dmSans(
-              fontSize: 10, fontWeight: FontWeight.w700,
-              letterSpacing: 0.3,
-              color: isActual ? Colors.white : AppColors.gris)),
-    );
-  }
-}
-
-class _CalRow extends StatelessWidget {
-  final String label;
-  final List<int> meses;
-  final Color color, bg;
-  final int mesActual;
-  const _CalRow({required this.label, required this.meses, required this.color, required this.bg, required this.mesActual});
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 3),
-      child: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          SizedBox(width: 100, child: Text(label, style: GoogleFonts.dmSans(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.verdeOscuro))),
-          ...List.generate(12, (i) {
-            final active = meses.contains(i);
-            return Container(
-              width: 36, height: 36, margin: const EdgeInsets.symmetric(horizontal: 2),
-              decoration: BoxDecoration(
-                color: active ? bg : Colors.transparent,
-                borderRadius: BorderRadius.circular(4),
-                border: Border.all(color: i == mesActual ? AppColors.verde : Colors.transparent, width: 2),
-              ),
-              child: Center(
-                child: Text(active ? '●' : '·',
-                    style: TextStyle(fontSize: active ? 14 : 12,
-                        color: active ? color : const Color(0xFFCCCCCC))),
-              ),
-            );
-          }),
+          Text('Observaciones para ${calendario.nombre}',
+              style: GoogleFonts.fraunces(fontSize: 18, fontWeight: FontWeight.bold, color: AppColors.menta)),
+          const SizedBox(height: 12),
+          Text(calendario.observaciones,
+              style: GoogleFonts.dmSans(fontSize: 14, color: Colors.white.withOpacity(0.8), height: 1.5)),
         ],
       ),
     );

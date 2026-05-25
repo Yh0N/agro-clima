@@ -10,9 +10,10 @@ abstract class WeatherEvent extends Equatable {
 
 class FetchForecastEvent extends WeatherEvent {
   final String municipio;
-  FetchForecastEvent(this.municipio);
+  final int altitud;
+  FetchForecastEvent(this.municipio, {this.altitud = 2527});
   @override
-  List<Object?> get props => [municipio];
+  List<Object?> get props => [municipio, altitud];
 }
 
 // ── STATES ──────────────────────────────────────────────────────────────────

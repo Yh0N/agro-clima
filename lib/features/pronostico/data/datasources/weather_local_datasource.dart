@@ -1,20 +1,33 @@
 import 'dart:convert';
-import 'package:shared_preferences/shared_preferences.dart';
+import 'package:sqflite/sqflite.dart';
+import '../../../../core/database/app_database.dart';
 import '../../domain/entities/weather_forecast.dart';
 
 class WeatherLocalDataSource {
-  static const _key = 'cached_forecasts';
+  final AppDatabase db;
+
+  WeatherLocalDataSource({required this.db});
 
   Future<WeatherForecast?> getCachedForecast(String municipio) async {
     try {
-      final prefs = await SharedPreferences.getInstance();
-      final raw = prefs.getString('${_key}_$municipio');
-      if (raw == null) return null;
-      final map = jsonDecode(raw) as Map<String, dynamic>;
-      final fetchedAt = DateTime.parse(map['fetchedAt'] as String);
-      if (DateTime.now().difference(fetchedAt).inHours >= 6) return null;
+      final database = await db.database;
+      final results = await database.query(
+        AppDatabase.tableW,
+        where: '${AppDatabase.colWMunicipio} = ?',
+        whereArgs: [municipio],
+      );
 
-      final daysData = map['days'] as List;
+      if (results.isEmpty) return null;
+
+      final map = results.first;
+      final fetchedAt = DateTime.parse(map[AppDatabase.colWFetchedAt] as String);
+      
+      // TTL de 1 hora según requerimiento Sprint 2
+      if (DateTime.now().difference(fetchedAt).inHours >= 1) {
+        return null;
+      }
+
+      final daysData = jsonDecode(map[AppDatabase.colWData] as String) as List;
       final days = daysData.map((d) {
         return WeatherDay(
           dayName: d['dayName'] as String,
@@ -39,23 +52,28 @@ class WeatherLocalDataSource {
 
   Future<void> cacheForecast(WeatherForecast forecast) async {
     try {
-      final prefs = await SharedPreferences.getInstance();
-      final map = {
-        'fetchedAt': forecast.fetchedAt.toIso8601String(),
-        'days': forecast.days
-            .map((d) => {
-                  'dayName': d.dayName,
-                  'date': d.date.toIso8601String(),
-                  'tempMin': d.tempMin,
-                  'tempMax': d.tempMax,
-                  'rainProbability': d.rainProbability,
-                  'windSpeed': d.windSpeed,
-                  'emoji': d.emoji,
-                })
-            .toList(),
-      };
-      await prefs.setString(
-          '${_key}_${forecast.municipio}', jsonEncode(map));
+      final database = await db.database;
+      final daysJson = jsonEncode(forecast.days
+          .map((d) => {
+                'dayName': d.dayName,
+                'date': d.date.toIso8601String(),
+                'tempMin': d.tempMin,
+                'tempMax': d.tempMax,
+                'rainProbability': d.rainProbability,
+                'windSpeed': d.windSpeed,
+                'emoji': d.emoji,
+              })
+          .toList());
+
+      await database.insert(
+        AppDatabase.tableW,
+        {
+          AppDatabase.colWMunicipio: forecast.municipio,
+          AppDatabase.colWData: daysJson,
+          AppDatabase.colWFetchedAt: forecast.fetchedAt.toIso8601String(),
+        },
+        conflictAlgorithm: ConflictAlgorithm.replace,
+      );
     } catch (_) {}
   }
 }

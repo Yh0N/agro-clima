@@ -17,6 +17,7 @@ void main() {
         altitud: 3200,
         tempMin: -1.0,
         humedad: 60,
+        viento: 5.0,
         mes: 1,
         nubosidad: 20,
       );
@@ -28,6 +29,7 @@ void main() {
         altitud: 2000,
         tempMin: -2.0,
         humedad: 70,
+        viento: 2.0,
         mes: 6,
         nubosidad: 10,
       );
@@ -41,6 +43,7 @@ void main() {
         altitud: 2800,
         tempMin: 3.0,
         humedad: 65,
+        viento: 12.0,
         mes: 7,
         nubosidad: 30,
       );
@@ -54,6 +57,7 @@ void main() {
         altitud: 1700,
         tempMin: 12.0,
         humedad: 80,
+        viento: 10.0,
         mes: 4,
         nubosidad: 70,
       );
@@ -65,6 +69,7 @@ void main() {
         altitud: 1760,
         tempMin: 15.0,
         humedad: 75,
+        viento: 8.0,
         mes: 3,
         nubosidad: 50,
       );
@@ -73,30 +78,32 @@ void main() {
   });
 
   group('FrostDecisionTree — Confianza', () {
-    test('La confianza está en rango 0.55–0.95', () {
+    test('La confianza está en rango 0.60–0.98', () {
       for (final temp in [-3.0, 0.0, 5.0, 10.0, 18.0]) {
         final r = tree.predict(
           altitud: 2500,
           tempMin: temp,
           humedad: 60,
+          viento: 10.0,
           mes: 6,
           nubosidad: 30,
         );
-        expect(r.confidence, inInclusiveRange(0.55, 0.95));
+        expect(r.confidence, inInclusiveRange(0.60, 0.98));
       }
     });
   });
 
   group('FrostDecisionTree — Recomendación campesina', () {
-    test('Riesgo ALTO incluye "Protege"', () {
+    test('Riesgo ALTO incluye "ALERTA ROJA"', () {
       final r = tree.predict(
         altitud: 3100,
         tempMin: -2.0,
         humedad: 50,
+        viento: 1.0,
         mes: 1,
         nubosidad: 15,
       );
-      expect(r.recommendation.toLowerCase(), contains('proteg'));
+      expect(r.recommendation.toLowerCase(), contains('alerta roja'));
     });
 
     test('Riesgo BAJO incluye mensaje positivo', () {
@@ -104,6 +111,7 @@ void main() {
         altitud: 1800,
         tempMin: 14.0,
         humedad: 80,
+        viento: 15.0,
         mes: 5,
         nubosidad: 60,
       );
@@ -118,21 +126,23 @@ void main() {
         altitud: 3000,
         tempMin: -2.0,
         humedad: 60,
+        viento: 4.0,
         mes: 1,
         nubosidad: 10,
       );
       expect(r.factors, isNotEmpty);
     });
 
-    test('Condiciones normales → "Condiciones normales de campo"', () {
+    test('Condiciones normales → "Condiciones térmicas normales"', () {
       final r = tree.predict(
         altitud: 1700,
         tempMin: 15.0,
         humedad: 75,
+        viento: 12.0,
         mes: 4,
         nubosidad: 60,
       );
-      expect(r.factors.first, contains('normales'));
+      expect(r.factors.first, contains('térmicas'));
     });
   });
 }

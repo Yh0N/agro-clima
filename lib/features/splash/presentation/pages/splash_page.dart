@@ -4,13 +4,9 @@ import 'package:google_fonts/google_fonts.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../finca/presentation/bloc/finca_bloc.dart';
 import '../../../finca/presentation/bloc/finca_event_state.dart';
+import '../../../usuario/presentation/bloc/usuario_bloc.dart';
+import '../../../usuario/presentation/bloc/usuario_event_state.dart';
 
-/// SplashPage — punto de entrada.
-///
-/// Flujo:
-///   1. Muestra animación de carga mientras el FincaBloc verifica SQLite.
-///   2. Si hay finca guardada  → AppShell (dashboard completo).
-///   3. Si NO hay finca         → RegistroFincaPage (primera vez).
 class SplashPage extends StatefulWidget {
   const SplashPage({super.key});
 
@@ -22,6 +18,7 @@ class _SplashPageState extends State<SplashPage>
     with SingleTickerProviderStateMixin {
   late AnimationController _pulse;
   late Animation<double> _scale;
+  bool _navigated = false;
 
   @override
   void initState() {
@@ -36,8 +33,8 @@ class _SplashPageState extends State<SplashPage>
       CurvedAnimation(parent: _pulse, curve: Curves.easeInOut),
     );
 
-    // Dispara la carga de la finca desde SQLite
-    context.read<FincaBloc>().add(LoadFincaEvent());
+    // Iniciar verificando el Usuario
+    context.read<UsuarioBloc>().add(LoadUsuarioEvent());
   }
 
   @override
@@ -48,13 +45,26 @@ class _SplashPageState extends State<SplashPage>
 
   @override
   Widget build(BuildContext context) {
-    return BlocListener<FincaBloc, FincaState>(
-      listener: (context, state) {
-        if (state is FincaLoaded || state is FincaError) {
-          // La finca es opcional, siempre vamos al shell principal
-          _goToShell(context);
-        }
-      },
+    return MultiBlocListener(
+      listeners: [
+        BlocListener<UsuarioBloc, UsuarioState>(
+          listener: (context, state) {
+            if (_navigated) return;
+            if (state is UsuarioEmpty || state is UsuarioLoaded || state is UsuarioError) {
+              context.read<FincaBloc>().add(LoadFincaEvent());
+            }
+          },
+        ),
+        BlocListener<FincaBloc, FincaState>(
+          listener: (context, state) {
+            if (_navigated) return;
+            if (state is FincaEmpty || state is FincaLoaded || state is FincaError) {
+              _navigated = true;
+              Navigator.of(context).pushReplacementNamed('/home');
+            }
+          },
+        ),
+      ],
       child: Scaffold(
         backgroundColor: AppColors.verdeOscuro,
         body: SafeArea(
@@ -111,7 +121,17 @@ class _SplashPageState extends State<SplashPage>
                 ),
 
                 const SizedBox(height: 56),
-
+                // Botón de registro (solo visible si el usuario aún no está creado)
+                ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.verde,
+                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  ),
+                  onPressed: () => Navigator.of(context).pushReplacementNamed('/registro_usuario'),
+                  child: const Text('Registrarse', style: TextStyle(color: Colors.white)),
+                ),
+                const SizedBox(height: 24),
                 const CircularProgressIndicator(
                   color: AppColors.verdeClaro,
                   strokeWidth: 2.5,

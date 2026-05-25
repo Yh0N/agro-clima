@@ -2,729 +2,436 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../../../core/constants/app_colors.dart';
+import '../../../../core/services/notification_service.dart';
+import '../../../finca/presentation/bloc/finca_bloc.dart';
+import '../../../finca/presentation/bloc/finca_event_state.dart';
 import '../../../pronostico/presentation/bloc/weather_bloc.dart';
 import '../../../pronostico/presentation/bloc/weather_event_state.dart';
 import '../../../pronostico/domain/entities/weather_forecast.dart';
-import '../../../finca/presentation/bloc/finca_bloc.dart';
-import '../../../finca/presentation/bloc/finca_event_state.dart';
+import '../../../prediccion/presentation/bloc/prediction_bloc.dart';
 import '../../../prediccion/domain/entities/frost_prediction.dart';
+import '../../../prediccion/presentation/bloc/prediction_event_state.dart';
+import '../../../usuario/presentation/bloc/usuario_bloc.dart';
+import '../../../usuario/presentation/bloc/usuario_event_state.dart';
+import 'package:get_it/get_it.dart';
 
 class DashboardPage extends StatelessWidget {
-  const DashboardPage({super.key});
+  final Function(int)? onNavigate;
+  const DashboardPage({super.key, this.onNavigate});
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.crema,
-      body: RefreshIndicator(
-        color: AppColors.verde,
-        onRefresh: () async {
-          final fb = context.read<FincaBloc>();
-          final municipio = fb.state is FincaLoaded
-              ? (fb.state as FincaLoaded).finca.municipio
-              : 'Pasto';
-          context.read<WeatherBloc>().add(FetchForecastEvent(municipio));
-        },
-        child: SingleChildScrollView(
-          physics: const AlwaysScrollableScrollPhysics(),
-          child: Column(
-            children: [
-              // Top bar con fecha y estado
-              _TopBar(),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
-                child: Column(
-                  children: [
-                    // HERO BANNER
-                    _HeroBanner(),
-                    const SizedBox(height: 20),
-                    // ALERTAS
-                    _AlertasSection(),
-                    const SizedBox(height: 20),
-                    // KPI GRID
-                    _KpiGrid(),
-                    const SizedBox(height: 20),
-                    // SEMÁFORO + PRONÓSTICO
-                    _BottomGrid(),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-// ── TOP BAR ──────────────────────────────────────────────────────────────────
-class _TopBar extends StatelessWidget {
-  @override
-  Widget build(BuildContext context) {
-    final now = DateTime.now();
-    final dias = ['dom', 'lun', 'mar', 'mié', 'jue', 'vie', 'sáb'];
-    final meses = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
-    final dateStr = '${dias[now.weekday % 7]} ${now.day} ${meses[now.month - 1]} ${now.year}';
-
-    return Container(
-      color: AppColors.blanco,
-      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-      child: Row(
-        children: [
-          Text('Panel principal',
-              style: GoogleFonts.fraunces(
-                  fontSize: 20,
-                  fontWeight: FontWeight.w700,
-                  color: AppColors.verdeOscuro)),
-          const Spacer(),
-          Text(dateStr,
-              style: GoogleFonts.dmSans(fontSize: 13, color: AppColors.gris)),
-          const SizedBox(width: 16),
-          Row(
-            children: [
-              Container(
-                width: 8,
-                height: 8,
-                decoration: const BoxDecoration(
-                    color: AppColors.verdeClaro, shape: BoxShape.circle),
-              ),
-              const SizedBox(width: 6),
-              Text('API activa',
-                  style: GoogleFonts.dmSans(
-                      fontSize: 12, color: AppColors.verdeMedio)),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-// ── HERO BANNER ──────────────────────────────────────────────────────────────
-class _HeroBanner extends StatelessWidget {
-  @override
-  Widget build(BuildContext context) {
-    return BlocBuilder<FincaBloc, FincaState>(
-      builder: (context, state) {
-        final nombre = state is FincaLoaded ? state.finca.nombreAgricultero : 'Agricultor';
-        final municipio = state is FincaLoaded ? state.finca.municipio : 'Nariño';
-        final altitud = state is FincaLoaded ? '${state.finca.altitud} m.s.n.m.' : 'Configura tu finca';
-
-        return BlocBuilder<WeatherBloc, WeatherState>(
-          builder: (context, wState) {
-            final tempStr = wState is WeatherLoaded && wState.forecast.days.isNotEmpty
-                ? '${wState.forecast.days.first.tempMax.toInt()}°C ahora'
-                : '—°C ahora';
-
-            return Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(28),
-              decoration: BoxDecoration(
-                gradient: const LinearGradient(
-                  colors: [AppColors.verdeOscuro, AppColors.verde],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                ),
-                borderRadius: BorderRadius.circular(16),
-              ),
-              child: Stack(
-                children: [
-                  // Emoji decorativo
-                  Positioned(
-                    right: 0,
-                    top: 0,
-                    bottom: 0,
-                    child: Align(
-                      alignment: Alignment.centerRight,
-                      child: Text('🌿',
-                          style: const TextStyle(fontSize: 72, height: 1)
-                              .copyWith(color: Colors.white.withValues(alpha: 0.15))),
-                    ),
-                  ),
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text('Buenos días, $nombre 👋',
-                          style: GoogleFonts.fraunces(
-                              fontSize: 24,
-                              fontWeight: FontWeight.w900,
-                              color: Colors.white,
-                              height: 1.1)),
-                      const SizedBox(height: 8),
-                      Text(
-                        'Resumen del clima para tu finca en $municipio. Revisa las alertas antes de salir al campo.',
-                        style: GoogleFonts.dmSans(
-                            fontSize: 14,
-                            color: Colors.white.withValues(alpha: 0.8),
-                            height: 1.6),
-                      ),
-                      const SizedBox(height: 16),
-                      Wrap(
-                        spacing: 20,
-                        runSpacing: 8,
+      body: BlocBuilder<UsuarioBloc, UsuarioState>(
+        builder: (context, usuarioState) {
+          if (usuarioState is UsuarioLoading) {
+            return const Center(child: CircularProgressIndicator());
+          }
+          if (usuarioState is UsuarioEmpty || usuarioState is UsuarioError) {
+            return _buildNoUser(context);
+          }
+          if (usuarioState is UsuarioLoaded) {
+            final usuario = usuarioState.usuario;
+            
+            return BlocBuilder<FincaBloc, FincaState>(
+              builder: (context, fincaState) {
+                if (fincaState is FincaLoading) {
+                  return const Center(child: CircularProgressIndicator());
+                }
+                if (fincaState is FincaEmpty) {
+                  return _buildNoFinca(context, usuario.nombres);
+                }
+                if (fincaState is FincaLoaded) {
+                  final finca = fincaState.finca;
+                  return RefreshIndicator(
+                    onRefresh: () async {
+                      context.read<WeatherBloc>().add(FetchForecastEvent(finca.municipio, altitud: finca.altitud));
+                    },
+                    child: SingleChildScrollView(
+                      physics: const AlwaysScrollableScrollPhysics(),
+                      padding: const EdgeInsets.all(20),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          _MetaItem('📍', altitud),
-                          _MetaItem('🌡️', tempStr),
-                          _MetaItem('💧', '72% humedad'),
+                          _Header(nombre: usuario.nombres),
+                          const SizedBox(height: 24),
+                          _FrostRiskCard(finca: finca),
+                          const SizedBox(height: 24),
+                          _WeatherStrip(municipio: finca.municipio),
+                          const SizedBox(height: 24),
+                          _QuickActions(onNavigate: onNavigate),
                         ],
                       ),
-                    ],
-                  ),
-                ],
-              ),
-            );
-          },
-        );
-      },
-    );
-  }
-}
-
-class _MetaItem extends StatelessWidget {
-  final String emoji;
-  final String text;
-  const _MetaItem(this.emoji, this.text);
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Text(emoji, style: const TextStyle(fontSize: 14)),
-        const SizedBox(width: 6),
-        Text(text,
-            style: GoogleFonts.dmSans(
-                fontSize: 13, color: Colors.white.withValues(alpha: 0.9))),
-      ],
-    );
-  }
-}
-
-// ── ALERTAS ──────────────────────────────────────────────────────────────────
-class _AlertasSection extends StatelessWidget {
-  @override
-  Widget build(BuildContext context) {
-    return BlocBuilder<WeatherBloc, WeatherState>(
-      builder: (context, state) {
-        if (state is WeatherLoaded && state.forecast.days.isNotEmpty) {
-          final today = state.forecast.days.first;
-          if (today.tempMin < 4) {
-            return _AlertCard(
-              type: _AlertType.alto,
-              emoji: '🚨',
-              title: '¡Alerta de helada esta noche!',
-              body:
-                  'Temperatura mínima de ${today.tempMin.toStringAsFixed(1)}°C en ${state.forecast.municipio}. Protege tus cultivos antes de las 6pm.',
+                    ),
+                  );
+                }
+                return const Center(child: Text('Algo salió mal al cargar su finca.'));
+              },
             );
           }
-        }
-        return _AlertCard(
-          type: _AlertType.info,
-          emoji: 'ℹ️',
-          title: 'Configura tu perfil',
-          body:
-              'Ve a "Mi finca" para personalizar las predicciones según tu altitud y cultivos.',
-        );
-      },
-    );
-  }
-}
-
-enum _AlertType { alto, medio, bajo, info }
-
-class _AlertCard extends StatelessWidget {
-  final _AlertType type;
-  final String emoji;
-  final String title;
-  final String body;
-
-  const _AlertCard(
-      {required this.type,
-      required this.emoji,
-      required this.title,
-      required this.body});
-
-  @override
-  Widget build(BuildContext context) {
-    Color bg, border;
-    switch (type) {
-      case _AlertType.alto:
-        bg = const Color(0xFFFCE8E0);
-        border = AppColors.riskHigh;
-        break;
-      case _AlertType.medio:
-        bg = const Color(0xFFFEF3C7);
-        border = AppColors.acento;
-        break;
-      case _AlertType.bajo:
-        bg = AppColors.niebla;
-        border = AppColors.verdeClaro;
-        break;
-      case _AlertType.info:
-        bg = const Color(0xFFDBEAFE);
-        border = AppColors.azul;
-        break;
-    }
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: bg,
-        border: Border(left: BorderSide(color: border, width: 4)),
-        borderRadius: BorderRadius.circular(10),
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(emoji, style: const TextStyle(fontSize: 20)),
-          const SizedBox(width: 12),
-          Expanded(
-            child: RichText(
-              text: TextSpan(
-                style: GoogleFonts.dmSans(
-                    fontSize: 14,
-                    color: AppColors.verdeOscuro,
-                    height: 1.6),
-                children: [
-                  TextSpan(
-                      text: '$title — ',
-                      style: const TextStyle(fontWeight: FontWeight.w700)),
-                  TextSpan(text: body),
-                ],
-              ),
-            ),
-          ),
-        ],
+          return const Center(child: Text('Algo salió mal al cargar su perfil.'));
+        },
       ),
     );
   }
-}
 
-// ── KPI GRID ─────────────────────────────────────────────────────────────────
-class _KpiGrid extends StatelessWidget {
-  @override
-  Widget build(BuildContext context) {
-    return BlocBuilder<WeatherBloc, WeatherState>(
-      builder: (context, state) {
-        double temp = 14;
-        int lluvia = 28;
-        int viento = 12;
-        String heladaLabel = 'MEDIO';
-        Color heladaColor = AppColors.acento;
-
-        if (state is WeatherLoaded && state.forecast.days.isNotEmpty) {
-          final d = state.forecast.days.first;
-          temp = d.tempMax;
-          lluvia = d.rainProbability.toInt();
-          viento = d.windSpeed.toInt();
-          if (d.tempMin < 4) {
-            heladaLabel = 'ALTO';
-            heladaColor = AppColors.riskHigh;
-          } else if (d.tempMin < 8) {
-            heladaLabel = 'MEDIO';
-            heladaColor = AppColors.acento;
-          } else {
-            heladaLabel = 'BAJO';
-            heladaColor = AppColors.riskLow;
-          }
-        }
-
-        return LayoutBuilder(
-          builder: (_, constraints) {
-            final crossCount = constraints.maxWidth > 600 ? 4 : 2;
-            return GridView.count(
-              crossAxisCount: crossCount,
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              crossAxisSpacing: 14,
-              mainAxisSpacing: 14,
-              childAspectRatio: 0.95,
-              children: [
-                _KpiCard(emoji: '🌡️', value: '${temp.toInt()}°C', label: 'Temperatura actual', sub: '↓ 2°C hasta la noche', subColor: AppColors.verdeMedio),
-                _KpiCard(emoji: '💧', value: '$lluvia%', label: 'Prob. de lluvia', sub: 'Tarde: ${lluvia + 17}%', subColor: AppColors.azul),
-                _KpiCard(emoji: '💨', value: '$viento km/h', label: 'Vel. del viento', sub: viento < 20 ? '✅ Apto para fumigar' : '⚠️ Viento fuerte', subColor: AppColors.verdeMedio),
-                _KpiCard(emoji: '⚠️', value: heladaLabel, label: 'Riesgo de helada', sub: 'Noche: vigilar', subColor: heladaColor, valueColor: heladaColor),
-              ],
-            );
-          },
-        );
-      },
-    );
-  }
-}
-
-class _KpiCard extends StatelessWidget {
-  final String emoji;
-  final String value;
-  final String label;
-  final String sub;
-  final Color subColor;
-  final Color? valueColor;
-
-  const _KpiCard({
-    required this.emoji,
-    required this.value,
-    required this.label,
-    required this.sub,
-    required this.subColor,
-    this.valueColor,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
-      decoration: BoxDecoration(
-        color: AppColors.blanco,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppColors.niebla),
-        boxShadow: const [BoxShadow(color: Color(0x0C1A3D2B), blurRadius: 16, offset: Offset(0, 4))],
-      ),
+  Widget _buildNoUser(BuildContext context) {
+    return Center(
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
+        mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Text(emoji, style: const TextStyle(fontSize: 22)),
-          const SizedBox(height: 6),
-          Text(value,
-              style: GoogleFonts.fraunces(
-                  fontSize: 22,
-                  fontWeight: FontWeight.w900,
-                  color: valueColor ?? AppColors.verdeOscuro)),
-          const SizedBox(height: 2),
-          Text(label,
-              style: GoogleFonts.dmSans(fontSize: 11, color: AppColors.gris)),
-          const SizedBox(height: 3),
-          Text(sub,
-              style: GoogleFonts.dmSans(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w500,
-                  color: subColor)),
+          const Text('👨‍🌾', style: TextStyle(fontSize: 64)),
+          const SizedBox(height: 16),
+          Text('¡Bienvenido a AgroClima!',
+              style: GoogleFonts.fraunces(fontSize: 20, fontWeight: FontWeight.w700)),
+          const SizedBox(height: 8),
+          Text('Registra tu perfil para comenzar',
+              style: GoogleFonts.dmSans(fontSize: 15, color: AppColors.gris)),
+          const SizedBox(height: 24),
+          ElevatedButton(
+            onPressed: () => Navigator.pushNamed(context, '/registro_usuario'),
+            child: const Text('Registrar Perfil'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildNoFinca(BuildContext context, String nombre) {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          const Text('🏡', style: TextStyle(fontSize: 64)),
+          const SizedBox(height: 16),
+          Text('Hola $nombre, aún no has registrado tu finca',
+              style: GoogleFonts.fraunces(fontSize: 18, fontWeight: FontWeight.w700)),
+          const SizedBox(height: 16),
+          ElevatedButton(
+            onPressed: () => Navigator.pushNamed(context, '/registro'),
+            child: const Text('Registrar mi finca'),
+          ),
         ],
       ),
     );
   }
 }
 
-// ── SEMÁFORO + PRONÓSTICO ────────────────────────────────────────────────────
-class _BottomGrid extends StatelessWidget {
-  @override
-  Widget build(BuildContext context) {
-    return LayoutBuilder(
-      builder: (_, constraints) {
-        final isWide = constraints.maxWidth > 600;
-        final children = [
-          _SemaforoCard(),
-          const SizedBox(height: 16),
-          _ForecastCard(),
-        ];
-        if (isWide) {
-          return Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Expanded(child: _SemaforoCard()),
-              const SizedBox(width: 16),
-              Expanded(child: _ForecastCard()),
-            ],
-          );
-        }
-        return Column(children: children);
-      },
-    );
-  }
-}
-
-class _SemaforoCard extends StatelessWidget {
-  @override
-  Widget build(BuildContext context) {
-    return BlocBuilder<WeatherBloc, WeatherState>(
-      builder: (context, state) {
-        RiskLevel level = RiskLevel.low;
-        double heladaPct = 0.25;
-        double fumigPct = 0.8;
-        String texto = 'Todo bien — Condiciones normales hoy';
-
-        if (state is WeatherLoaded && state.forecast.days.isNotEmpty) {
-          final d = state.forecast.days.first;
-          if (d.tempMin < 4) {
-            level = RiskLevel.high;
-            heladaPct = 0.85;
-            fumigPct = d.windSpeed < 20 ? 0.65 : 0.3;
-            texto = '⚠️ Peligro — Protege tus cultivos esta noche';
-          } else if (d.tempMin < 8) {
-            level = RiskLevel.medium;
-            heladaPct = 0.55;
-            fumigPct = 0.7;
-            texto = 'Precaución — Revisa temperatura esta noche';
-          } else {
-            fumigPct = d.windSpeed < 20 ? 0.88 : 0.5;
-          }
-        }
-
-        return _AgroCard(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text('🚦 Semáforo del día',
-                  style: GoogleFonts.fraunces(
-                      fontSize: 16, fontWeight: FontWeight.w700, color: AppColors.verdeOscuro)),
-              Text('Estado general de tu finca',
-                  style: GoogleFonts.dmSans(fontSize: 12, color: AppColors.gris)),
-              const SizedBox(height: 16),
-              // Semáforo
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  _SemaforoDot(emoji: '🔴', active: level == RiskLevel.high, color: AppColors.riskHigh),
-                  const SizedBox(width: 12),
-                  _SemaforoDot(emoji: '🟡', active: level == RiskLevel.medium, color: AppColors.riskMedium),
-                  const SizedBox(width: 12),
-                  _SemaforoDot(emoji: '🟢', active: level == RiskLevel.low, color: AppColors.riskLow),
-                ],
-              ),
-              const SizedBox(height: 8),
-              Center(
-                child: Text(texto,
-                    style: GoogleFonts.dmSans(fontSize: 13, color: AppColors.gris),
-                    textAlign: TextAlign.center),
-              ),
-              const SizedBox(height: 16),
-              _ProgressRow(label: 'Riesgo helada', value: heladaPct,
-                  color: level == RiskLevel.high ? AppColors.riskHigh : AppColors.acento),
-              const SizedBox(height: 8),
-              _ProgressRow(label: 'Condición fumigación', value: fumigPct, color: AppColors.verdeClaro),
-            ],
-          ),
-        );
-      },
-    );
-  }
-}
-
-class _SemaforoDot extends StatelessWidget {
-  final String emoji;
-  final bool active;
-  final Color color;
-
-  const _SemaforoDot({required this.emoji, required this.active, required this.color});
-
-  @override
-  Widget build(BuildContext context) {
-    return AnimatedContainer(
-      duration: const Duration(milliseconds: 400),
-      width: 52,
-      height: 52,
-      decoration: BoxDecoration(
-        color: active ? color.withValues(alpha: 0.18) : const Color(0xFFF0F4F1),
-        shape: BoxShape.circle,
-        boxShadow: active
-            ? [BoxShadow(color: color.withValues(alpha: 0.5), blurRadius: 16, spreadRadius: 2)]
-            : null,
-      ),
-      child: Center(
-        child: Text(emoji,
-            style: TextStyle(
-                fontSize: 22,
-                color: active ? color : Colors.grey.shade400)),
-      ),
-    );
-  }
-}
-
-class _ProgressRow extends StatelessWidget {
-  final String label;
-  final double value;
-  final Color color;
-
-  const _ProgressRow({required this.label, required this.value, required this.color});
+class _Header extends StatelessWidget {
+  final String nombre;
+  const _Header({required this.nombre});
 
   @override
   Widget build(BuildContext context) {
     return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('¡Buenas, $nombre! 👨‍🌾',
+            style: GoogleFonts.fraunces(
+                fontSize: 24,
+                fontWeight: FontWeight.w900,
+                color: AppColors.verdeOscuro)),
+        const SizedBox(height: 4),
+        Text('Aquí tiene el resumen de su campo para hoy.',
+            style: GoogleFonts.dmSans(fontSize: 14, color: AppColors.gris)),
+      ],
+    );
+  }
+}
+
+class _FrostRiskCard extends StatelessWidget {
+  final dynamic finca;
+  const _FrostRiskCard({required this.finca});
+
+  @override
+  Widget build(BuildContext context) {
+    return BlocBuilder<WeatherBloc, WeatherState>(
+      builder: (context, weatherState) {
+        if (weatherState is WeatherLoaded) {
+          final today = weatherState.forecast.days.first;
+          
+          // Disparamos la predicción si no se ha hecho
+          context.read<PredictionBloc>().add(PredictFrostEvent(
+            altitud: finca.altitud,
+            tempMin: today.tempMin,
+            humedad: today.rainProbability > 50 ? 80 : 40, // Estimación simple
+            mes: DateTime.now().month,
+            viento: today.windSpeed,
+          ));
+
+          return BlocBuilder<PredictionBloc, PredictionState>(
+            builder: (context, predState) {
+              if (predState is PredictionLoaded) {
+                final risk = predState.prediction.level;
+                final color = _getRiskColor(risk);
+                
+                if (risk == RiskLevel.high) {
+                  final service = GetIt.I<NotificationService>();
+                  service.showFrostAlert(
+                    recommendation: predState.prediction.recommendation
+                  );
+                  service.scheduleFrostCheck(
+                    recommendation: predState.prediction.recommendation
+                  );
+                }
+                
+                return Column(
+                  children: [
+                    if (risk == RiskLevel.high)
+                      Container(
+                        margin: const EdgeInsets.only(bottom: 12),
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: AppColors.riskHigh,
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Row(
+                          children: [
+                            const Icon(Icons.warning_amber_rounded, color: Colors.white),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Text(
+                                '¡ALERTA! Riesgo alto de helada para esta noche.',
+                                style: GoogleFonts.dmSans(
+                                    color: Colors.white, fontWeight: FontWeight.bold),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    Container(
+                      padding: const EdgeInsets.all(20),
+                      decoration: BoxDecoration(
+                        color: AppColors.blanco,
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(color: color.withOpacity(0.3), width: 2),
+                      ),
+                      child: Column(
+                        children: [
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text('RIESGO DE HELADA',
+                                      style: GoogleFonts.dmSans(
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.w800,
+                                          letterSpacing: 1.2,
+                                          color: AppColors.gris)),
+                                  const SizedBox(height: 4),
+                                  Text(predState.prediction.levelLabel,
+                                      style: GoogleFonts.fraunces(
+                                          fontSize: 28,
+                                          fontWeight: FontWeight.w900,
+                                          color: color)),
+                                ],
+                              ),
+                              _RiskIndicator(level: risk),
+                            ],
+                          ),
+                          const Divider(height: 32),
+                          Text(predState.prediction.recommendation,
+                              textAlign: TextAlign.center,
+                              style: GoogleFonts.dmSans(
+                                  fontSize: 15, fontStyle: FontStyle.italic, color: AppColors.verdeOscuro)),
+                        ],
+                      ),
+                    ),
+                  ],
+                );
+              }
+              return const SizedBox(height: 100, child: Center(child: CircularProgressIndicator()));
+            },
+          );
+        }
+        return const SizedBox();
+      },
+    );
+  }
+
+  Color _getRiskColor(RiskLevel level) {
+    switch (level) {
+      case RiskLevel.high: return AppColors.riskHigh;
+      case RiskLevel.medium: return AppColors.riskMedium;
+      case RiskLevel.low: return AppColors.riskLow;
+    }
+  }
+}
+
+class _RiskIndicator extends StatelessWidget {
+  final RiskLevel level;
+  const _RiskIndicator({required this.level});
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        _Circle(active: level == RiskLevel.low, color: AppColors.riskLow),
+        const SizedBox(width: 4),
+        _Circle(active: level == RiskLevel.medium, color: AppColors.riskMedium),
+        const SizedBox(width: 4),
+        _Circle(active: level == RiskLevel.high, color: AppColors.riskHigh),
+      ],
+    );
+  }
+}
+
+class _Circle extends StatelessWidget {
+  final bool active;
+  final Color color;
+  const _Circle({required this.active, required this.color});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 12,
+      height: 12,
+      decoration: BoxDecoration(
+        color: active ? color : AppColors.niebla,
+        shape: BoxShape.circle,
+      ),
+    );
+  }
+}
+
+class _WeatherStrip extends StatelessWidget {
+  final String municipio;
+  const _WeatherStrip({required this.municipio});
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Text(label, style: GoogleFonts.dmSans(fontSize: 12, color: AppColors.verdeOscuro)),
-            Text('${(value * 100).toInt()}%',
-                style: GoogleFonts.dmSans(fontSize: 12, fontWeight: FontWeight.w600)),
+            Text('Pronóstico 3 días',
+                style: GoogleFonts.fraunces(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.verdeOscuro)),
+            Text(municipio, style: GoogleFonts.dmSans(fontSize: 13, color: AppColors.gris)),
           ],
         ),
-        const SizedBox(height: 4),
-        ClipRRect(
-          borderRadius: BorderRadius.circular(4),
-          child: LinearProgressIndicator(
-            value: value,
-            minHeight: 8,
-            backgroundColor: AppColors.niebla,
-            valueColor: AlwaysStoppedAnimation<Color>(color),
-          ),
+        const SizedBox(height: 12),
+        BlocBuilder<WeatherBloc, WeatherState>(
+          builder: (context, state) {
+            if (state is WeatherLoading) {
+              return const Center(child: CircularProgressIndicator());
+            }
+            if (state is WeatherLoaded) {
+              final forecast = state.forecast.days.take(3).toList();
+              return Row(
+                children: forecast.map((day) => Expanded(child: _WeatherSmallCard(day: day))).toList(),
+              );
+            }
+            return const Text('No se pudo cargar el clima');
+          },
         ),
       ],
     );
   }
 }
 
-// ── FORECAST CARD ─────────────────────────────────────────────────────────────
-class _ForecastCard extends StatefulWidget {
-  @override
-  State<_ForecastCard> createState() => _ForecastCardState();
-}
-
-class _ForecastCardState extends State<_ForecastCard> {
-  int? _selectedDay;
-
-  @override
-  Widget build(BuildContext context) {
-    return BlocBuilder<WeatherBloc, WeatherState>(
-      builder: (context, state) {
-        final days = state is WeatherLoaded ? state.forecast.days : <WeatherDay>[];
-
-        return _AgroCard(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text('📅 Próximos 7 días',
-                  style: GoogleFonts.fraunces(
-                      fontSize: 16, fontWeight: FontWeight.w700, color: AppColors.verdeOscuro)),
-              Text('Toca un día para ver detalles',
-                  style: GoogleFonts.dmSans(fontSize: 12, color: AppColors.gris)),
-              const SizedBox(height: 12),
-              if (state is WeatherLoading)
-                const Center(child: CircularProgressIndicator())
-              else if (days.isEmpty)
-                Text('Sin datos. Desliza para actualizar.',
-                    style: GoogleFonts.dmSans(color: AppColors.gris, fontSize: 13))
-              else ...[
-                SingleChildScrollView(
-                  scrollDirection: Axis.horizontal,
-                  child: Row(
-                    children: List.generate(days.length, (i) {
-                      final d = days[i];
-                      final sel = _selectedDay == i;
-                      return GestureDetector(
-                        onTap: () => setState(() => _selectedDay = sel ? null : i),
-                        child: _ForecastDayChip(day: d, selected: sel, isFirst: i == 0),
-                      );
-                    }),
-                  ),
-                ),
-                if (_selectedDay != null) ...[
-                  const SizedBox(height: 12),
-                  Container(
-                    padding: const EdgeInsets.all(10),
-                    decoration: BoxDecoration(
-                      color: AppColors.niebla,
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Row(
-                      children: [
-                        Text(days[_selectedDay!].emoji,
-                            style: const TextStyle(fontSize: 20)),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            '${days[_selectedDay!].dayName} — '
-                            '${days[_selectedDay!].tempMin.toInt()}° / ${days[_selectedDay!].tempMax.toInt()}°C · '
-                            'Lluvia: ${days[_selectedDay!].rainProbability.toInt()}% · '
-                            'Viento: ${days[_selectedDay!].windSpeed.toInt()} km/h'
-                            '${days[_selectedDay!].isGoodForSpray ? ' · ✅ Buen día para fumigar' : ''}',
-                            style: GoogleFonts.dmSans(
-                                fontSize: 12, color: AppColors.verdeOscuro),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ],
-            ],
-          ),
-        );
-      },
-    );
-  }
-}
-
-class _ForecastDayChip extends StatelessWidget {
+class _WeatherSmallCard extends StatelessWidget {
   final WeatherDay day;
-  final bool selected;
-  final bool isFirst;
-
-  const _ForecastDayChip({required this.day, required this.selected, this.isFirst = false});
+  const _WeatherSmallCard({required this.day});
 
   @override
   Widget build(BuildContext context) {
-    final isBest = day.isGoodForSpray;
-    return AnimatedContainer(
-      duration: const Duration(milliseconds: 200),
-      width: 80,
-      margin: const EdgeInsets.only(right: 8),
-      padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 4),
+      padding: const EdgeInsets.symmetric(vertical: 12),
       decoration: BoxDecoration(
-        color: selected
-            ? AppColors.verdeClaro
-            : isBest
-                ? const Color(0xFFFFF9E6)
-                : AppColors.niebla,
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(
-          color: selected
-              ? AppColors.verdeMedio
-              : isBest
-                  ? AppColors.acento
-                  : Colors.transparent,
-          width: 2,
-        ),
+        color: AppColors.blanco,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppColors.niebla),
       ),
       child: Column(
         children: [
-          Text(isFirst ? 'Hoy' : day.dayName.substring(0, 3),
-              style: GoogleFonts.dmSans(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w600,
-                  letterSpacing: 0.5,
-                  color: selected ? Colors.white : AppColors.verdeOscuro)),
+          Text(day.dayName.substring(0, 3),
+              style: GoogleFonts.dmSans(fontSize: 12, fontWeight: FontWeight.bold)),
           const SizedBox(height: 4),
-          Text(day.emoji, style: const TextStyle(fontSize: 22)),
+          Text(day.emoji, style: const TextStyle(fontSize: 20)),
           const SizedBox(height: 4),
-          Text('${day.tempMin.toInt()}°/${day.tempMax.toInt()}°',
-              style: GoogleFonts.fraunces(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w700,
-                  color: selected ? Colors.white : AppColors.verdeOscuro)),
-          Text('💧${day.rainProbability.toInt()}%',
-              style: GoogleFonts.dmSans(
-                  fontSize: 11,
-                  color: selected ? Colors.white70 : AppColors.azul)),
-          if (isBest && !selected)
-            Text('✅ Fumigar',
-                style: GoogleFonts.dmSans(
-                    fontSize: 9,
-                    fontWeight: FontWeight.w700,
-                    color: AppColors.tierra)),
+          Text('${day.tempMin.round()}° / ${day.tempMax.round()}°',
+              style: GoogleFonts.dmSans(fontSize: 12, fontWeight: FontWeight.w600)),
         ],
       ),
     );
   }
 }
 
-// ── REUSABLE CARD ─────────────────────────────────────────────────────────────
-class _AgroCard extends StatelessWidget {
-  final Widget child;
-  const _AgroCard({required this.child});
+class _QuickActions extends StatelessWidget {
+  final Function(int)? onNavigate;
+  const _QuickActions({this.onNavigate});
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('Acceso rápido',
+            style: GoogleFonts.fraunces(
+                fontSize: 18,
+                fontWeight: FontWeight.w700,
+                color: AppColors.verdeOscuro)),
+        const SizedBox(height: 12),
+        _ActionBtn(
+          icon: Icons.wb_sunny_rounded,
+          label: 'Pronóstico 7 días',
+          onTap: () => onNavigate?.call(1),
+        ),
+        _ActionBtn(
+          icon: Icons.bar_chart_rounded,
+          label: 'Historial Climático',
+          onTap: () => onNavigate?.call(5),
+        ),
+        _ActionBtn(
+          icon: Icons.calendar_month_rounded,
+          label: 'Calendario Agrícola',
+          onTap: () => onNavigate?.call(6),
+        ),
+        _ActionBtn(
+          icon: Icons.spa_rounded,
+          label: 'Mis Cultivos',
+          onTap: () => onNavigate?.call(4),
+        ),
+        _ActionBtn(
+          icon: Icons.cottage_rounded,
+          label: 'Mi Finca',
+          onTap: () => onNavigate?.call(3),
+        ),
+      ],
+    );
+  }
+}
+
+class _ActionBtn extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+
+  const _ActionBtn({required this.icon, required this.label, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(22),
-      decoration: BoxDecoration(
-        color: AppColors.blanco,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppColors.niebla),
-        boxShadow: const [BoxShadow(color: Color(0x0C1A3D2B), blurRadius: 16, offset: Offset(0, 4))],
+      margin: const EdgeInsets.only(bottom: 8),
+      child: ListTile(
+        onTap: onTap,
+        tileColor: AppColors.blanco,
+        shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+            side: const BorderSide(color: AppColors.niebla)),
+        leading: Icon(icon, color: AppColors.verde),
+        title: Text(label, style: GoogleFonts.dmSans(fontSize: 15, fontWeight: FontWeight.w600)),
+        trailing: const Icon(Icons.chevron_right_rounded, color: AppColors.gris),
       ),
-      child: child,
     );
   }
 }

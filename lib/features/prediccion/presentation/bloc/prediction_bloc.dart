@@ -22,6 +22,7 @@ class PredictionBloc extends Bloc<PredictionEvent, PredictionState> {
         altitud: event.altitud,
         tempMin: event.tempMin,
         humedad: event.humedad,
+        viento: event.viento,
         mes: event.mes,
         nubosidad: event.nubosidad,
       );

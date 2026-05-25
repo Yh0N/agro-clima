@@ -1,147 +1,97 @@
-import 'dart:convert';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sqflite/sqflite.dart';
 import '../../../../core/database/app_database.dart';
 import '../../domain/entities/finca.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
-/// Fuente de datos local usando SQLite (sqflite).
-/// Soporta múltiples fincas.
 class FincaSQLiteDataSource {
-  final AppDatabase? _db;
-  final Database? _rawDb;
+  final AppDatabase db;
 
-  // Clave para el fallback en SharedPreferences
-  static const _spKey = 'finca_list_v2';
+  FincaSQLiteDataSource({required this.db});
 
-  /// Constructor principal — usa AppDatabase singleton.
-  FincaSQLiteDataSource({AppDatabase? db})
-      : _db = db ?? AppDatabase.instance,
-        _rawDb = null;
+  Future<int?> getSelectedFincaId() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getInt('selected_finca_id');
+  }
 
-  /// Constructor para tests — recibe una Database ya abierta (in-memory).
-  FincaSQLiteDataSource.fromDatabase(Database database)
-      : _db = null,
-        _rawDb = database;
+  Future<void> setSelectedFincaId(int id) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt('selected_finca_id', id);
+  }
 
-  Future<Database> get _database async =>
-      _rawDb ?? await _db!.database;
-
-  // ── Carga ─────────────────────────────────────────────────────────────────
-
-  Future<List<Finca>> loadFincas() async {
-    // 1. Intenta SQLite
+  Future<List<Finca>> loadAllFincas() async {
     try {
-      final database = await _database;
+      final database = await db.database;
       final rows = await database.query(AppDatabase.tableF);
-      return rows.map((r) => _fromRow(r)).toList();
+      return rows.map((row) => _fromRow(row)).toList();
     } catch (e) {
-      // ignore: avoid_print
-      print('[SQLiteDS] loadFincas SQLite error: $e — usando SP fallback');
-    }
-
-    // 2. Fallback: SharedPreferences
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final raw = prefs.getString(_spKey);
-      if (raw == null) return [];
-      final list = jsonDecode(raw) as List;
-      return list.map((e) => Finca.fromMap(e as Map<String, dynamic>)).toList();
-    } catch (_) {
       return [];
     }
   }
 
-  // ── Guardar (upsert) ──────────────────────────────────────────────────────
-
-  Future<Finca> saveFinca(Finca finca) async {
-    bool savedToSqlite = false;
-    Finca? savedFinca;
-
-    // 1. Intenta SQLite
+  Future<Finca?> loadFinca() async {
     try {
-      final database = await _database;
-      final map = _toRow(finca);
-
-      if (finca.id == null) {
-        final newId = await database.insert(AppDatabase.tableF, map);
-        savedFinca = finca.copyWith(id: newId);
-      } else {
-        await database.update(
+      final database = await db.database;
+      final selectedId = await getSelectedFincaId();
+      if (selectedId != null) {
+        final rows = await database.query(
           AppDatabase.tableF,
-          map,
           where: '${AppDatabase.colId} = ?',
-          whereArgs: [finca.id],
+          whereArgs: [selectedId],
         );
-        savedFinca = finca;
-      }
-      savedToSqlite = true;
-    } catch (e) {
-      // ignore: avoid_print
-      print('[SQLiteDS] saveFinca SQLite error: $e — usando SP fallback');
-      savedFinca = finca;
-    }
-
-    // 2. Siempre guarda en SharedPreferences como respaldo
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final raw = prefs.getString(_spKey);
-      List<Finca> current = [];
-      if (raw != null) {
-        current = (jsonDecode(raw) as List)
-            .map((e) => Finca.fromMap(e as Map<String, dynamic>))
-            .toList();
-      }
-      
-      if (savedFinca!.id != null) {
-        final idx = current.indexWhere((e) => e.id == savedFinca!.id);
-        if (idx >= 0) {
-          current[idx] = savedFinca;
-        } else {
-          current.add(savedFinca);
+        if (rows.isNotEmpty) {
+          return _fromRow(rows.first);
         }
-      } else {
-        // Fallback ID si sqlite falló completamente
-        final fakeId = DateTime.now().millisecondsSinceEpoch;
-        savedFinca = savedFinca.copyWith(id: fakeId);
-        current.add(savedFinca);
       }
-
-      await prefs.setString(_spKey, jsonEncode(current.map((e) => e.toMap()).toList()));
+      // Si no hay seleccionado o no existe en BD, obtener el primero de la lista
+      final rows = await database.query(AppDatabase.tableF);
+      if (rows.isEmpty) return null;
+      final firstFinca = _fromRow(rows.first);
+      if (firstFinca.id != null) {
+        await setSelectedFincaId(firstFinca.id!);
+      }
+      return firstFinca;
     } catch (e) {
-      if (!savedToSqlite) rethrow;
+      return null;
     }
-
-    return savedFinca!;
   }
 
-  // ── Eliminar ──────────────────────────────────────────────────────────────
+  Future<Finca> saveFinca(Finca finca) async {
+    final database = await db.database;
+    final map = _toRow(finca);
+    if (finca.id != null) {
+      map[AppDatabase.colId] = finca.id;
+    }
 
-  Future<void> deleteFinca(int id) async {
-    try {
-      final database = await _database;
+    final id = await database.insert(
+      AppDatabase.tableF,
+      map,
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+    
+    final savedFinca = finca.copyWith(id: finca.id ?? id);
+    await setSelectedFincaId(savedFinca.id!);
+    return savedFinca;
+  }
+
+  Future<void> deleteFinca() async {
+    final database = await db.database;
+    final selectedId = await getSelectedFincaId();
+    if (selectedId != null) {
       await database.delete(
         AppDatabase.tableF,
         where: '${AppDatabase.colId} = ?',
-        whereArgs: [id],
+        whereArgs: [selectedId],
       );
-    } catch (_) {}
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final raw = prefs.getString(_spKey);
-      if (raw != null) {
-        final current = (jsonDecode(raw) as List)
-            .map((e) => Finca.fromMap(e as Map<String, dynamic>))
-            .toList();
-        current.removeWhere((e) => e.id == id);
-        await prefs.setString(_spKey, jsonEncode(current.map((e) => e.toMap()).toList()));
-      }
-    } catch (_) {}
+    } else {
+      await database.delete(AppDatabase.tableF);
+    }
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove('selected_finca_id');
   }
 
-  // ── Helpers ───────────────────────────────────────────────────────────────
-
   Map<String, dynamic> _toRow(Finca finca) {
-    final map = <String, dynamic>{
+    return {
+      AppDatabase.colUsuarioId: 1, // Un solo usuario local para MVP
       AppDatabase.colNombreAg: finca.nombreAgricultero,
       AppDatabase.colNombreF: finca.nombreFinca,
       AppDatabase.colMunicipio: finca.municipio,
@@ -149,11 +99,9 @@ class FincaSQLiteDataSource {
       AppDatabase.colAltitud: finca.altitud,
       AppDatabase.colHectareas: finca.hectareas,
       AppDatabase.colTipoRiego: finca.tipoRiego,
+      AppDatabase.colSincronizado: 0,
+      AppDatabase.colModificadoEn: DateTime.now().toUtc().toIso8601String(),
     };
-    if (finca.id != null) {
-      map[AppDatabase.colId] = finca.id;
-    }
-    return map;
   }
 
   Finca _fromRow(Map<String, dynamic> row) => Finca(

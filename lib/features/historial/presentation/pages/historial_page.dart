@@ -166,6 +166,22 @@ class _ChartCard extends StatelessWidget {
     // Tomamos los últimos 28 registros o lo que haya
     final data = registros.take(28).toList().reversed.toList();
 
+    double minTemp = 0;
+    double maxTemp = 0;
+    if (data.isNotEmpty) {
+      minTemp = data.map((e) => e.tempMin).reduce((a, b) => a < b ? a : b);
+      maxTemp = data.map((e) => e.tempMin).reduce((a, b) => a > b ? a : b);
+    }
+    
+    // Si todos los registros tienen la misma temperatura, damos un margen para que no se aplane.
+    if (minTemp == maxTemp) {
+      minTemp -= 2;
+      maxTemp += 2;
+    } else {
+      minTemp -= 2;
+      maxTemp += 2;
+    }
+
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
@@ -184,9 +200,11 @@ class _ChartCard extends StatelessWidget {
             height: 200,
             child: LineChart(
               LineChartData(
+                minY: minTemp,
+                maxY: maxTemp,
                 gridData: FlGridData(show: true, drawVerticalLine: false),
                 titlesData: FlTitlesData(
-                  leftTitles: AxisTitles(sideTitles: SideTitles(showTitles: true, reservedSize: 30)),
+                  leftTitles: AxisTitles(sideTitles: SideTitles(showTitles: true, reservedSize: 40)),
                   bottomTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
                   rightTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
                   topTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
@@ -199,7 +217,7 @@ class _ChartCard extends StatelessWidget {
                     color: AppColors.verde,
                     barWidth: 3,
                     isStrokeCapRound: true,
-                    dotData: FlDotData(show: data.length < 10),
+                    dotData: FlDotData(show: true),
                     belowBarData: BarAreaData(
                       show: true,
                       color: AppColors.verde.withValues(alpha: 0.1),
